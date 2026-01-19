@@ -887,6 +887,21 @@ async function generateLearningPath(event) {
         const formatResources = (resourcesText) => {
             if (!resourcesText) return '';
             
+            // Convert to string if it's not already (handles arrays, objects, etc.)
+            let text = '';
+            if (typeof resourcesText === 'string') {
+                text = resourcesText;
+            } else if (Array.isArray(resourcesText)) {
+                // If it's an array, join with commas
+                text = resourcesText.join(', ');
+            } else if (typeof resourcesText === 'object') {
+                // If it's an object, try to stringify or extract meaningful value
+                text = JSON.stringify(resourcesText);
+            } else {
+                // For any other type, convert to string
+                text = String(resourcesText);
+            }
+            
             // Pattern to match URLs
             const urlPattern = /(https?:\/\/[^\s\)،,]+)/g;
             
@@ -900,7 +915,7 @@ async function generateLearningPath(event) {
             
             // Find all matches
             resourcePattern.lastIndex = 0;
-            while ((match = resourcePattern.exec(resourcesText)) !== null) {
+            while ((match = resourcePattern.exec(text)) !== null) {
                 matches.push({
                     name: match[1].trim(),
                     url: match[2],
@@ -915,7 +930,7 @@ async function generateLearningPath(event) {
                 matches.forEach((matchItem, index) => {
                     // Add text before this match
                     if (matchItem.index > lastIndex) {
-                        result += resourcesText.substring(lastIndex, matchItem.index);
+                        result += text.substring(lastIndex, matchItem.index);
                     }
                     
                     // Add the clickable link
@@ -930,12 +945,12 @@ async function generateLearningPath(event) {
                 });
                 
                 // Add remaining text
-                if (lastIndex < resourcesText.length) {
-                    result += resourcesText.substring(lastIndex);
+                if (lastIndex < text.length) {
+                    result += text.substring(lastIndex);
                 }
             } else {
                 // No structured format found, just make URLs clickable
-                result = resourcesText.replace(urlPattern, (url) => {
+                result = text.replace(urlPattern, (url) => {
                     return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="resource-link">${url}</a>`;
                 });
             }
