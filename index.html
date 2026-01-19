@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,55 +8,116 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- Animated Professional Background -->
+    <div class="animated-background">
+        <canvas id="background-canvas"></canvas>
+        <div class="particle-container">
+            <div class="particle particle-1"></div>
+            <div class="particle particle-2"></div>
+            <div class="particle particle-3"></div>
+            <div class="particle particle-4"></div>
+            <div class="particle particle-5"></div>
+            <div class="particle particle-6"></div>
+            <div class="particle particle-7"></div>
+            <div class="particle particle-8"></div>
+        </div>
+        <div class="grid-lines"></div>
+    </div>
+
     <div class="container">
         <!-- Header -->
         <header class="header">
+            <div class="language-toggle-container">
+                <button class="language-toggle" id="language-toggle" onclick="toggleLanguage()">
+                    <span class="lang-text" id="lang-text">العربية</span>
+                </button>
+            </div>
             <div class="header-content">
-                <h1 class="logo">AI ASSOCIATION</h1>
-                <p class="subtitle">Interactive AI Tools Platform</p>
-                <p class="conference-info">ICAN 2026 | King Saud University, Riyadh | January 28-29, 2026</p>
+                <div class="logos-container">
+                    <img src="pic/ai association.svg" alt="AI Association" class="logo-img ai-logo">
+                    <span class="logo-connector">×</span>
+                    <img src="pic/ican.svg" alt="ICAN 2026" class="logo-img ican-logo">
+                </div>
             </div>
         </header>
 
-        <!-- Navigation Tabs -->
-        <nav class="tabs">
-            <button class="tab-btn active" data-tool="skills-gap">
-                <span class="tab-icon">01</span>
-                <span>Skills Gap Analyzer</span>
-            </button>
-            <button class="tab-btn" data-tool="learning-path">
-                <span class="tab-icon">02</span>
-                <span>Learning Path Generator</span>
-            </button>
-            <button class="tab-btn" data-tool="job-translator">
-                <span class="tab-icon">03</span>
-                <span>Job Skills Translator</span>
-            </button>
-        </nav>
+        <!-- Home Page -->
+        <section id="home-page" class="page-section active">
+            <div class="home-content">
+                <div class="intro-section">
+                    <h2 class="home-title" data-i18n="home-title">Empowering AI Excellence</h2>
+                    <p class="home-description" data-i18n="home-description">
+                        AI Association and ICAN 2026 present intelligent tools to bridge the gap between current capabilities and future AI readiness.
+                    </p>
+                </div>
+                
+                <div class="tools-grid">
+                    <!-- Tool Card 1 -->
+                    <div class="tool-card" onclick="navigateToTool('skills-gap')">
+                        <div class="tool-card-icon">01</div>
+                        <h3 data-i18n="tool-card-1-title">Skills Gap Analyzer</h3>
+                        <p data-i18n="tool-card-1-description">Assess your organization's AI readiness and identify critical skill gaps. Get a comprehensive analysis with actionable insights and industry benchmarks.</p>
+                        <div class="tool-card-footer">
+                            <span class="tool-badge" data-i18n="track-capacities">Building National Capacities</span>
+                            <span class="tool-arrow">→</span>
+                        </div>
+                    </div>
 
-        <!-- Tool Sections -->
-        <main class="main-content">
+                    <!-- Tool Card 2 -->
+                    <div class="tool-card" onclick="navigateToTool('learning-path')">
+                        <div class="tool-card-icon">02</div>
+                        <h3 data-i18n="tool-card-2-title">Learning Path Generator</h3>
+                        <p data-i18n="tool-card-2-description">Get a personalized AI learning plan tailored to your goals, experience level, and available time. Receive a structured curriculum with milestones and career pathways.</p>
+                        <div class="tool-card-footer">
+                            <span class="tool-badge" data-i18n="track-education">AI in Education</span>
+                            <span class="tool-arrow">→</span>
+                        </div>
+                    </div>
+
+                    <!-- Tool Card 3 -->
+                    <div class="tool-card" onclick="navigateToTool('job-translator')">
+                        <div class="tool-card-icon">03</div>
+                        <h3 data-i18n="tool-card-3-title">Job Skills Translator</h3>
+                        <p data-i18n="tool-card-3-description">Discover how AI will transform your career and what skills you need. Get personalized career transition options and an immediate upskilling plan.</p>
+                        <div class="tool-card-footer">
+                            <span class="tool-badge" data-i18n="track-workforce">AI-Powered Workforce</span>
+                            <span class="tool-arrow">→</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tool Pages -->
+        <main class="main-content" id="tool-pages" style="display: none;">
+            <!-- Back Button -->
+            <button class="back-button" onclick="navigateToHome()" data-i18n="back-to-home">
+                ← Back to Home
+            </button>
+
             <!-- Tool 1: AI Skills Gap Analyzer -->
-            <section id="skills-gap" class="tool-section active">
+            <section id="skills-gap" class="tool-section">
                 <div class="tool-header">
-                    <h2>AI Skills Gap Analyzer</h2>
-                    <p class="tool-description">Assess your organization's AI readiness and identify critical skill gaps</p>
-                    <p class="track-badge">Track: Building National Capacities</p>
+                    <h2 data-i18n="skills-gap-title">AI Skills Gap Analyzer</h2>
+                    <p class="tool-description" data-i18n="skills-gap-description">Assess your organization's AI readiness and identify critical skill gaps</p>
                 </div>
                 
                 <div id="skills-gap-content" class="tool-content">
                     <div id="skills-gap-intro" class="intro-screen">
                         <div class="intro-card">
-                            <h3>What You'll Get</h3>
+                            <h3 data-i18n="what-youll-get">What You'll Get</h3>
                             <ul class="benefits-list">
-                                <li>Readiness Score (0-100)</li>
-                                <li>Top 3 Priority Gaps</li>
-                                <li>Action Roadmap</li>
-                                <li>Industry Benchmark Comparison</li>
+                                <li data-i18n="benefit-1">Readiness Score (0-100)</li>
+                                <li data-i18n="benefit-2">Top 3 Priority Gaps</li>
+                                <li data-i18n="benefit-3">Action Roadmap</li>
+                                <li data-i18n="benefit-4">Industry Benchmark Comparison</li>
                             </ul>
-                            <button class="btn-primary" onclick="startSkillsGapAssessment()">Start Assessment</button>
+                            <button class="btn-primary" onclick="startSkillsGapAssessment()" data-i18n="start-assessment">Start Assessment</button>
                         </div>
                     </div>
                     
@@ -69,15 +130,23 @@
                     
                     <div id="skills-gap-results" class="results-screen" style="display: none;">
                         <div class="results-container">
-                            <h3>Your Assessment Results</h3>
+                            <h3 data-i18n="assessment-results">Your Assessment Results</h3>
                             <div class="score-display">
                                 <div class="score-circle">
                                     <span id="readiness-score">0</span>
-                                    <span class="score-label">Readiness Score</span>
+                                    <span class="score-label" data-i18n="readiness-score">Readiness Score</span>
                                 </div>
                             </div>
                             <div id="results-content"></div>
-                            <button class="btn-secondary" onclick="resetSkillsGap()">Take Assessment Again</button>
+                            <div class="email-section">
+                                <h4 data-i18n="send-results-email">Send Results to Email</h4>
+                                <div class="email-input-group">
+                                    <input type="email" id="skills-gap-email" class="email-input" placeholder="Enter your email address" data-i18n-placeholder="email-placeholder">
+                                    <button class="btn-primary" onclick="sendResultsEmail('skills-gap')" data-i18n="send-email">Send</button>
+                                </div>
+                                <p class="email-status" id="skills-gap-email-status"></p>
+                            </div>
+                            <button class="btn-secondary" onclick="resetSkillsGap()" data-i18n="take-again">Take Assessment Again</button>
                         </div>
                     </div>
                 </div>
@@ -86,61 +155,68 @@
             <!-- Tool 2: Learning Path Generator -->
             <section id="learning-path" class="tool-section">
                 <div class="tool-header">
-                    <h2>Learning Path Generator</h2>
-                    <p class="tool-description">Get a personalized AI learning plan tailored to your goals</p>
-                    <p class="track-badge">Track: AI in Education</p>
+                    <h2 data-i18n="learning-path-title">Learning Path Generator</h2>
+                    <p class="tool-description" data-i18n="learning-path-description">Get a personalized AI learning plan tailored to your goals</p>
                 </div>
                 
                 <div id="learning-path-content" class="tool-content">
                     <div id="learning-path-form" class="form-screen">
                         <form id="learning-form" onsubmit="generateLearningPath(event)">
                             <div class="form-group">
-                                <label for="current-role">Current Role</label>
+                                <label for="current-role" data-i18n="current-role">Current Role</label>
                                 <select id="current-role" required>
-                                    <option value="">Select your role</option>
-                                    <option value="student">Student</option>
-                                    <option value="professional">Professional</option>
-                                    <option value="executive">Executive/Manager</option>
-                                    <option value="educator">Educator</option>
-                                    <option value="researcher">Researcher</option>
+                                    <option value="" data-i18n="select-role">Select your role</option>
+                                    <option value="student" data-i18n="role-student">Student</option>
+                                    <option value="professional" data-i18n="role-professional">Professional</option>
+                                    <option value="executive" data-i18n="role-executive">Executive/Manager</option>
+                                    <option value="educator" data-i18n="role-educator">Educator</option>
+                                    <option value="researcher" data-i18n="role-researcher">Researcher</option>
                                 </select>
                             </div>
                             
                             <div class="form-group">
-                                <label for="experience-level">Experience Level</label>
+                                <label for="experience-level" data-i18n="experience-level">Experience Level</label>
                                 <select id="experience-level" required>
-                                    <option value="">Select experience level</option>
-                                    <option value="beginner">Beginner</option>
-                                    <option value="intermediate">Intermediate</option>
-                                    <option value="advanced">Advanced</option>
+                                    <option value="" data-i18n="select-experience">Select experience level</option>
+                                    <option value="beginner" data-i18n="exp-beginner">Beginner</option>
+                                    <option value="intermediate" data-i18n="exp-intermediate">Intermediate</option>
+                                    <option value="advanced" data-i18n="exp-advanced">Advanced</option>
                                 </select>
                             </div>
                             
                             <div class="form-group">
-                                <label for="learning-goals">Learning Goals</label>
-                                <textarea id="learning-goals" placeholder="Describe what you want to achieve with AI (e.g., build AI applications, understand ML fundamentals, apply AI in my field)" required></textarea>
+                                <label for="learning-goals" data-i18n="learning-goals">Learning Goals</label>
+                                <textarea id="learning-goals" data-i18n-placeholder="learning-goals-placeholder" placeholder="Describe what you want to achieve with AI (e.g., build AI applications, understand ML fundamentals, apply AI in my field)" required></textarea>
                             </div>
                             
                             <div class="form-group">
-                                <label for="time-available">Time Available per Week</label>
+                                <label for="time-available" data-i18n="time-available">Time Available per Week</label>
                                 <select id="time-available" required>
-                                    <option value="">Select time commitment</option>
-                                    <option value="5">5 hours</option>
-                                    <option value="10">10 hours</option>
-                                    <option value="15">15 hours</option>
-                                    <option value="20">20+ hours</option>
+                                    <option value="" data-i18n="select-time">Select time commitment</option>
+                                    <option value="5" data-i18n="time-5">5 hours</option>
+                                    <option value="10" data-i18n="time-10">10 hours</option>
+                                    <option value="15" data-i18n="time-15">15 hours</option>
+                                    <option value="20" data-i18n="time-20">20+ hours</option>
                                 </select>
                             </div>
                             
-                            <button type="submit" class="btn-primary">Generate Learning Path</button>
+                            <button type="submit" class="btn-primary" data-i18n="generate-path">Generate Learning Path</button>
                         </form>
                     </div>
                     
                     <div id="learning-path-results" class="results-screen" style="display: none;">
                         <div class="results-container">
-                            <h3>Your Personalized Learning Path</h3>
+                            <h3 data-i18n="personalized-path">Your Personalized Learning Path</h3>
                             <div id="learning-path-content-display"></div>
-                            <button class="btn-secondary" onclick="resetLearningPath()">Generate New Path</button>
+                            <div class="email-section">
+                                <h4 data-i18n="send-results-email">Send Results to Email</h4>
+                                <div class="email-input-group">
+                                    <input type="email" id="learning-path-email" class="email-input" placeholder="Enter your email address" data-i18n-placeholder="email-placeholder">
+                                    <button class="btn-primary" onclick="sendResultsEmail('learning-path')" data-i18n="send-email">Send</button>
+                                </div>
+                                <p class="email-status" id="learning-path-email-status"></p>
+                            </div>
+                            <button class="btn-secondary" onclick="resetLearningPath()" data-i18n="generate-new">Generate New Path</button>
                         </div>
                     </div>
                 </div>
@@ -149,48 +225,55 @@
             <!-- Tool 3: Job Skills Translator -->
             <section id="job-translator" class="tool-section">
                 <div class="tool-header">
-                    <h2>Job Skills Translator</h2>
-                    <p class="tool-description">Discover how AI will transform your career and what skills you need</p>
-                    <p class="track-badge">Track: AI-Powered Workforce</p>
+                    <h2 data-i18n="job-translator-title">Job Skills Translator</h2>
+                    <p class="tool-description" data-i18n="job-translator-description">Discover how AI will transform your career and what skills you need</p>
                 </div>
                 
                 <div id="job-translator-content" class="tool-content">
                     <div id="job-translator-form" class="form-screen">
                         <form id="job-form" onsubmit="analyzeJobSkills(event)">
                             <div class="form-group">
-                                <label for="job-title">Current Job Title</label>
-                                <input type="text" id="job-title" placeholder="e.g., Marketing Manager, Software Developer, Data Analyst" required>
+                                <label for="job-title" data-i18n="job-title">Current Job Title</label>
+                                <input type="text" id="job-title" data-i18n-placeholder="job-title-placeholder" placeholder="e.g., Marketing Manager, Software Developer, Data Analyst" required>
                             </div>
                             
                             <div class="form-group">
-                                <label for="job-responsibilities">Key Responsibilities</label>
-                                <textarea id="job-responsibilities" placeholder="Describe your main responsibilities and daily tasks" required></textarea>
+                                <label for="job-responsibilities" data-i18n="job-responsibilities">Key Responsibilities</label>
+                                <textarea id="job-responsibilities" data-i18n-placeholder="job-responsibilities-placeholder" placeholder="Describe your main responsibilities and daily tasks" required></textarea>
                             </div>
                             
                             <div class="form-group">
-                                <label for="industry">Industry</label>
+                                <label for="industry" data-i18n="industry">Industry</label>
                                 <select id="industry" required>
-                                    <option value="">Select your industry</option>
-                                    <option value="technology">Technology</option>
-                                    <option value="healthcare">Healthcare</option>
-                                    <option value="finance">Finance</option>
-                                    <option value="education">Education</option>
-                                    <option value="retail">Retail</option>
-                                    <option value="manufacturing">Manufacturing</option>
-                                    <option value="consulting">Consulting</option>
-                                    <option value="other">Other</option>
+                                    <option value="" data-i18n="select-industry">Select your industry</option>
+                                    <option value="technology" data-i18n="ind-technology">Technology</option>
+                                    <option value="healthcare" data-i18n="ind-healthcare">Healthcare</option>
+                                    <option value="finance" data-i18n="ind-finance">Finance</option>
+                                    <option value="education" data-i18n="ind-education">Education</option>
+                                    <option value="retail" data-i18n="ind-retail">Retail</option>
+                                    <option value="manufacturing" data-i18n="ind-manufacturing">Manufacturing</option>
+                                    <option value="consulting" data-i18n="ind-consulting">Consulting</option>
+                                    <option value="other" data-i18n="ind-other">Other</option>
                                 </select>
                             </div>
                             
-                            <button type="submit" class="btn-primary">Analyze My Career</button>
+                            <button type="submit" class="btn-primary" data-i18n="analyze-career">Analyze My Career</button>
                         </form>
                     </div>
                     
                     <div id="job-translator-results" class="results-screen" style="display: none;">
                         <div class="results-container">
-                            <h3>Your Career Transformation Analysis</h3>
+                            <h3 data-i18n="career-analysis">Your Career Transformation Analysis</h3>
                             <div id="job-translator-content-display"></div>
-                            <button class="btn-secondary" onclick="resetJobTranslator()">Analyze Another Role</button>
+                            <div class="email-section">
+                                <h4 data-i18n="send-results-email">Send Results to Email</h4>
+                                <div class="email-input-group">
+                                    <input type="email" id="job-translator-email" class="email-input" placeholder="Enter your email address" data-i18n-placeholder="email-placeholder">
+                                    <button class="btn-primary" onclick="sendResultsEmail('job-translator')" data-i18n="send-email">Send</button>
+                                </div>
+                                <p class="email-status" id="job-translator-email-status"></p>
+                            </div>
+                            <button class="btn-secondary" onclick="resetJobTranslator()" data-i18n="analyze-another">Analyze Another Role</button>
                         </div>
                     </div>
                 </div>
@@ -199,11 +282,10 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p>AI Association | ICAN 2026 Conference | Interactive AI Tools Platform</p>
+            <p data-i18n="footer">AI Association | ICAN 2026 Conference | Interactive AI Tools Platform</p>
         </footer>
     </div>
 
     <script src="script.js"></script>
 </body>
 </html>
-
