@@ -1,3 +1,6 @@
+// API Base URL - automatically detects the current origin
+const API_BASE_URL = window.location.origin;
+
 // Translation System
 const translations = {
     en: {
@@ -592,7 +595,7 @@ async function showSkillsGapResults() {
     
     try {
         // Call AI-powered API
-        const response = await fetch('http://localhost:4000/api/analyze-skills-gap', {
+        const response = await fetch(`${API_BASE_URL}/api/analyze-skills-gap`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -841,7 +844,7 @@ async function generateLearningPath(event) {
     
     try {
         // Call AI-powered API
-        const response = await fetch('http://localhost:4000/api/generate-learning-path', {
+        const response = await fetch(`${API_BASE_URL}/api/generate-learning-path`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1188,7 +1191,7 @@ async function analyzeJobSkills(event) {
     
     try {
         // Call AI-powered API
-        const response = await fetch('http://localhost:4000/api/analyze-job-skills', {
+        const response = await fetch(`${API_BASE_URL}/api/analyze-job-skills`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1518,7 +1521,7 @@ async function sendResultsEmail(toolId) {
     statusElement.textContent = '';
     
     try {
-        const response = await fetch('http://localhost:4000/api/send-results-email', {
+        const response = await fetch(`${API_BASE_URL}/api/send-results-email`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

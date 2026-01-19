@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.local
+*.log
+.git/
+.DS_Store
+شرح_الأدوات_للمؤتمر.md
+README.md
+SETUP.md
+SMTP_SETUP.md
+
