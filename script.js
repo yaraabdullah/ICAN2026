@@ -1424,13 +1424,79 @@ async function generateLearningPath(event) {
         const pathwaysTitle = currentLang === 'ar' ? 'المسارات المهنية' : 'Career Pathways';
         const focusLabel = currentLang === 'ar' ? 'التركيز:' : 'Focus:';
         const resourcesLabel = currentLang === 'ar' ? 'الموارد:' : 'Resources:';
+        const freeResourcesLabel = currentLang === 'ar' ? 'الموارد المجانية:' : 'Free Resources:';
+        const paidResourcesLabel = currentLang === 'ar' ? 'الموارد المدفوعة:' : 'Paid Resources:';
         const durationLabel = currentLang === 'ar' ? 'المدة:' : 'Duration:';
         const weekLabel = currentLang === 'ar' ? 'الأسبوع' : 'Week';
         const skillsLabel = currentLang === 'ar' ? 'المهارات المطلوبة:' : 'Skills to develop:';
         const stepsLabel = currentLang === 'ar' ? 'الخطوات:' : 'Steps:';
         
-        // Function to convert resources text to clickable links
+        // Function to escape HTML entities
+        const escapeHtml = (text) => {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        };
+        
+        // Function to format resources array (for free/paid sections)
+        const formatResourcesArray = (resourcesArray) => {
+            if (!resourcesArray || !Array.isArray(resourcesArray) || resourcesArray.length === 0) {
+                return '';
+            }
+            
+            return resourcesArray.map((resource, index) => {
+                const text = String(resource);
+                // Pattern to match "Resource Name - URL" or "Resource Name: URL"
+                const resourcePattern = /([^-\n:،,\]]+?)\s*[-:،,]\s*(https?:\/\/[^\s\)،,\]]+|www\.[^\s\)،,\]]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}\/[^\s\)،,\]]*)/g;
+                const match = resourcePattern.exec(text);
+                
+                if (match) {
+                    let url = match[2];
+                    if (url.startsWith('www.')) {
+                        url = 'https://' + url;
+                    } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                        if (url.includes('.') && !url.includes(' ')) {
+                            url = 'https://' + url;
+                        } else {
+                            return escapeHtml(text); // Not a valid URL
+                        }
+                    }
+                    const escapedName = escapeHtml(match[1].trim());
+                    const escapedUrl = url.replace(/"/g, '&quot;');
+                    return `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer" class="resource-link">${escapedName}</a>`;
+                } else {
+                    // Try to find URL in text
+                    const urlPattern = /(https?:\/\/[^\s\)،,\]]+)/g;
+                    const urlMatch = urlPattern.exec(text);
+                    if (urlMatch) {
+                        const escapedUrl = urlMatch[0].replace(/"/g, '&quot;');
+                        return `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer" class="resource-link">${escapeHtml(text)}</a>`;
+                    }
+                    return escapeHtml(text);
+                }
+            }).join(currentLang === 'ar' ? '، ' : ', ');
+        };
+        
+        // Function to convert resources text to clickable links (backward compatibility)
         const formatResources = (resourcesText) => {
+            // Check if resources is an object with free/paid structure
+            if (resourcesText && typeof resourcesText === 'object' && !Array.isArray(resourcesText)) {
+                let result = '';
+                if (resourcesText.free && Array.isArray(resourcesText.free) && resourcesText.free.length > 0) {
+                    result += `<div class="resources-section resources-free">
+                        <strong>${freeResourcesLabel}</strong>
+                        <div class="resources-list">${formatResourcesArray(resourcesText.free)}</div>
+                    </div>`;
+                }
+                if (resourcesText.paid && Array.isArray(resourcesText.paid) && resourcesText.paid.length > 0) {
+                    result += `<div class="resources-section resources-paid">
+                        <strong>${paidResourcesLabel}</strong>
+                        <div class="resources-list">${formatResourcesArray(resourcesText.paid)}</div>
+                    </div>`;
+                }
+                return result || '';
+            }
+            
             if (!resourcesText) return '';
             
             // Convert to string if it's not already (handles arrays, objects, etc.)
@@ -1448,12 +1514,12 @@ async function generateLearningPath(event) {
                 text = String(resourcesText);
             }
             
-            // Pattern to match URLs
-            const urlPattern = /(https?:\/\/[^\s\)،,]+)/g;
+            // Enhanced URL pattern - matches http://, https://, www., and common domains
+            const urlPattern = /(https?:\/\/[^\s\)،,\]]+|www\.[^\s\)،,\]]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}\/[^\s\)،,\]]*)/g;
             
             // Try to match "Resource Name - URL" or "Resource Name: URL" or "Resource Name، URL"
             // This regex matches: text (name) followed by separator (-, :, ،, or ,) followed by URL
-            const resourcePattern = /([^-\n:،,]+?)\s*[-:،,]\s*(https?:\/\/[^\s\)،,]+)/g;
+            const resourcePattern = /([^-\n:،,\]]+?)\s*[-:،,]\s*(https?:\/\/[^\s\)،,\]]+|www\.[^\s\)،,\]]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}\/[^\s\)،,\]]*)/g;
             
             let result = '';
             const matches = [];
@@ -1462,9 +1528,22 @@ async function generateLearningPath(event) {
             // Find all matches
             resourcePattern.lastIndex = 0;
             while ((match = resourcePattern.exec(text)) !== null) {
+                let url = match[2];
+                // Add https:// if URL starts with www.
+                if (url.startsWith('www.')) {
+                    url = 'https://' + url;
+                }
+                // Ensure URL has protocol
+                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    // Check if it looks like a domain
+                    if (url.includes('.') && !url.includes(' ')) {
+                        url = 'https://' + url;
+                    }
+                }
+                
                 matches.push({
                     name: match[1].trim(),
-                    url: match[2],
+                    url: url,
                     fullMatch: match[0],
                     index: match.index
                 });
@@ -1474,13 +1553,15 @@ async function generateLearningPath(event) {
                 // Build result with clickable links
                 let lastIndex = 0;
                 matches.forEach((matchItem, index) => {
-                    // Add text before this match
+                    // Add text before this match (escape HTML for security)
                     if (matchItem.index > lastIndex) {
-                        result += text.substring(lastIndex, matchItem.index);
+                        result += escapeHtml(text.substring(lastIndex, matchItem.index));
                     }
                     
-                    // Add the clickable link
-                    result += `<a href="${matchItem.url}" target="_blank" rel="noopener noreferrer" class="resource-link">${matchItem.name}</a>`;
+                    // Add the clickable link (escape the name but not the URL)
+                    const escapedName = escapeHtml(matchItem.name);
+                    const escapedUrl = matchItem.url.replace(/"/g, '&quot;'); // Escape quotes in URL
+                    result += `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer" class="resource-link">${escapedName}</a>`;
                     
                     // Add separator if not last
                     if (index < matches.length - 1) {
@@ -1490,18 +1571,74 @@ async function generateLearningPath(event) {
                     lastIndex = matchItem.index + matchItem.fullMatch.length;
                 });
                 
-                // Add remaining text
+                // Add remaining text (escape HTML)
                 if (lastIndex < text.length) {
-                    result += text.substring(lastIndex);
+                    result += escapeHtml(text.substring(lastIndex));
                 }
             } else {
                 // No structured format found, just make URLs clickable
-                result = text.replace(urlPattern, (url) => {
-                    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="resource-link">${url}</a>`;
-                });
+                // Split text by URLs, escape non-URL parts
+                const parts = [];
+                let lastIndex = 0;
+                let urlMatch;
+                urlPattern.lastIndex = 0;
+                
+                while ((urlMatch = urlPattern.exec(text)) !== null) {
+                    // Add text before URL (escaped)
+                    if (urlMatch.index > lastIndex) {
+                        parts.push(escapeHtml(text.substring(lastIndex, urlMatch.index)));
+                    }
+                    
+                    // Normalize and add URL as link
+                    let normalizedUrl = urlMatch[0];
+                    if (normalizedUrl.startsWith('www.')) {
+                        normalizedUrl = 'https://' + normalizedUrl;
+                    } else if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+                        if (normalizedUrl.includes('.') && !normalizedUrl.includes(' ')) {
+                            normalizedUrl = 'https://' + normalizedUrl;
+                        } else {
+                            parts.push(escapeHtml(urlMatch[0])); // Not a valid URL, escape as text
+                            lastIndex = urlMatch.index + urlMatch[0].length;
+                            continue;
+                        }
+                    }
+                    const escapedUrl = normalizedUrl.replace(/"/g, '&quot;');
+                    parts.push(`<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer" class="resource-link">${escapeHtml(urlMatch[0])}</a>`);
+                    lastIndex = urlMatch.index + urlMatch[0].length;
+                }
+                
+                // Add remaining text (escaped)
+                if (lastIndex < text.length) {
+                    parts.push(escapeHtml(text.substring(lastIndex)));
+                }
+                
+                result = parts.join('');
             }
             
-            return result;
+            // If no links were found, return the text as-is (escaped, might be plain text resources)
+            if (result === '' || (!result.includes('<a') && text.includes('http'))) {
+                // Last attempt: try to find any URLs in the text
+                const simpleUrlPattern = /(https?:\/\/[^\s\)،,\]]+)/g;
+                const parts = [];
+                let lastIndex = 0;
+                let urlMatch;
+                simpleUrlPattern.lastIndex = 0;
+                
+                while ((urlMatch = simpleUrlPattern.exec(text)) !== null) {
+                    if (urlMatch.index > lastIndex) {
+                        parts.push(escapeHtml(text.substring(lastIndex, urlMatch.index)));
+                    }
+                    const escapedUrl = urlMatch[0].replace(/"/g, '&quot;');
+                    parts.push(`<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer" class="resource-link">${escapeHtml(urlMatch[0])}</a>`);
+                    lastIndex = urlMatch.index + urlMatch[0].length;
+                }
+                if (lastIndex < text.length) {
+                    parts.push(escapeHtml(text.substring(lastIndex)));
+                }
+                result = parts.join('');
+            }
+            
+            return result || escapeHtml(text); // Return formatted result or escaped original text if no URLs found
         };
         
         const resultsHTML = `
@@ -1511,7 +1648,10 @@ async function generateLearningPath(event) {
                 <div class="learning-path-item">
                     <h5>${index + 1}. ${item.topic}</h5>
                     <p><strong>${focusLabel}</strong> ${item.focus}</p>
-                    <p><strong>${resourcesLabel}</strong> <span class="resources-content">${formatResources(item.resources || '')}</span></p>
+                    <div class="resources-container">
+                        <strong>${resourcesLabel}</strong>
+                        <div class="resources-content">${formatResources(item.resources || '')}</div>
+                    </div>
                     ${item.duration ? `<p><strong>${durationLabel}</strong> ${item.duration}</p>` : ''}
                 </div>
             `).join('')}
@@ -1531,8 +1671,16 @@ async function generateLearningPath(event) {
                             <div class="timeline-week-badge">${weekLabel} ${week.week}</div>
                             <h5 class="timeline-topic">${Array.isArray(week.topics) ? week.topics.join(', ') : week.topic || week.topics}</h5>
                             <p class="timeline-description">${week.description}</p>
+                            ${week.activities && Array.isArray(week.activities) && week.activities.length > 0 ? `
+                                <div class="timeline-activities">
+                                    <strong>${currentLang === 'ar' ? 'الأنشطة:' : 'Activities:'}</strong>
+                                    <ul style="margin-top: 8px; padding-left: 20px;">
+                                        ${week.activities.map(activity => `<li style="margin-bottom: 4px;">${activity}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            ` : ''}
                             <div class="timeline-meta">
-                                ${week.projects ? `<span class="timeline-tag timeline-tag-project">${currentLang === 'ar' ? 'مشروع' : 'Project'}</span>` : ''}
+                                ${week.projects ? `<span class="timeline-tag timeline-tag-project">${currentLang === 'ar' ? 'مشروع' : 'Project'}: ${week.projects}</span>` : ''}
                                 ${week.hours ? `<span class="timeline-tag timeline-tag-hours">${week.hours} ${currentLang === 'ar' ? 'ساعة/أسبوع' : 'hrs/week'}</span>` : ''}
                             </div>
                         </div>
@@ -1544,7 +1692,12 @@ async function generateLearningPath(event) {
         <div class="result-section">
             <h4>${milestonesTitle}</h4>
             <ul>
-                ${data.milestones.map(m => `<li>${m}</li>`).join('')}
+                ${data.milestones.map(m => {
+                    if (typeof m === 'object' && m.title) {
+                        return `<li><strong>${m.title}:</strong> ${m.description || ''}</li>`;
+                    }
+                    return `<li>${m}</li>`;
+                }).join('')}
             </ul>
         </div>
         
@@ -1554,16 +1707,18 @@ async function generateLearningPath(event) {
                 <div class="career-path">
                     <h5>${path.title}</h5>
                     <p>${path.description}</p>
+                    ${path.requirements ? `<p><strong>${currentLang === 'ar' ? 'المتطلبات:' : 'Requirements:'}</strong> ${path.requirements}</p>` : ''}
                     <p><strong>${skillsLabel}</strong></p>
                     <div>
-                        ${path.skills.map(skill => `<span class="skill-badge">${skill}</span>`).join('')}
+                        ${(path.skills || []).map(skill => `<span class="skill-badge">${skill}</span>`).join('')}
                     </div>
-                    ${path.steps ? `
+                    ${path.steps && path.steps.length > 0 ? `
                         <p><strong>${stepsLabel}</strong></p>
                         <ul>
                             ${path.steps.map(step => `<li>${step}</li>`).join('')}
                         </ul>
                     ` : ''}
+                    ${path.growthOpportunities ? `<p><strong>${currentLang === 'ar' ? 'فرص النمو:' : 'Growth Opportunities:'}</strong> ${path.growthOpportunities}</p>` : ''}
                 </div>
             `).join('')}
         </div>

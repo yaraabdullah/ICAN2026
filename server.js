@@ -193,7 +193,12 @@ Format as JSON:
 // Tool 2: Learning Path Generator
 app.post('/api/generate-learning-path', async (req, res) => {
     try {
-        const { role, experience, goals, timePerWeek, industry } = req.body;
+        const { role, experience, goals, timePerWeek, industry, language } = req.body;
+        const lang = language === 'ar' ? 'ar' : 'en';
+        
+        const languageInstruction = lang === 'ar' 
+            ? 'CRITICAL: You MUST respond entirely in Arabic. All content including topic names, descriptions, activities, milestones, and career paths MUST be in Arabic. Only URLs should remain in English.'
+            : 'Respond in English.';
         
         const prompt = `As an AI education expert, create a personalized learning path for:
 
@@ -204,10 +209,21 @@ Time Available: ${timePerWeek} hours per week
 ${industry ? `Industry: ${industry}` : ''}
 
 Create a comprehensive, structured learning path that includes:
-1. A custom curriculum with 5-7 topics (each with topic name, focus description, and recommended resources)
-2. A week-by-week timeline based on time availability
-3. Key milestones (6 specific milestones)
-4. Career pathways (3-4 relevant paths with descriptions and required skills)
+1. A custom curriculum with 5-7 topics (each with topic name, detailed focus description, duration estimate, and recommended resources)
+2. A detailed week-by-week timeline based on time availability (include week number, topics covered, detailed activities, hours per week, projects/practice exercises)
+3. Key milestones (6 specific, measurable milestones with descriptions)
+4. Career pathways (3-4 relevant paths with detailed descriptions, required skills, steps to achieve, and growth opportunities - DO NOT include salary ranges)
+
+CRITICAL: For the "resources" field in curriculum, you MUST provide REAL, CLICKABLE URLs separated into FREE and PAID categories. Format resources as a JSON object with "free" and "paid" arrays:
+- Each resource should be formatted as: "Resource Name - https://real-url.com"
+- Free resources: YouTube videos, free courses (Coursera audit mode, edX audit, Khan Academy), free documentation, GitHub repos, free tutorials
+- Paid resources: Paid courses (Coursera paid, Udacity, paid platforms), premium subscriptions, paid certifications
+
+Use real, working URLs from reputable sources like:
+- Free: Khan Academy, YouTube, freeCodeCamp, official docs (docs.python.org, tensorflow.org, pytorch.org), GitHub, Coursera (audit mode), edX (audit mode)
+- Paid: Coursera (paid), Udacity, Pluralsight, LinkedIn Learning, paid certifications
+
+DO NOT use placeholder URLs or fake links. Every resource MUST be a real, accessible URL.
 
 Format as JSON:
 {
@@ -215,22 +231,43 @@ Format as JSON:
         {
             "topic": "Topic Name",
             "focus": "What to focus on",
-            "resources": "Recommended resources"
+            "resources": {
+                "free": [
+                    "Free Resource Name - https://free-url.com",
+                    "Another Free Resource - https://another-free-url.com"
+                ],
+                "paid": [
+                    "Paid Resource Name - https://paid-url.com",
+                    "Another Paid Resource - https://another-paid-url.com"
+                ]
+            }
         }
     ],
     "timeline": [
         {
             "week": 1,
             "topic": "Topic name",
-            "description": "What to do this week"
+            "topics": ["Topic 1", "Topic 2"],
+            "description": "Detailed description of what to do this week, including specific activities, readings, and practice exercises",
+            "hours": "5-10",
+            "projects": "Optional: specific project or exercise to complete",
+            "activities": ["Activity 1", "Activity 2", "Activity 3"]
         }
     ],
-    "milestones": ["milestone1", "milestone2", ...],
+    "milestones": [
+        {
+            "title": "Milestone name",
+            "description": "Detailed description of what this milestone means and how to achieve it"
+        }
+    ],
     "careerPaths": [
         {
             "title": "Career Title",
-            "description": "Description",
-            "skills": ["skill1", "skill2"]
+            "description": "Detailed description of this career path, what it involves, and why it's relevant",
+            "skills": ["skill1", "skill2", "skill3"],
+            "steps": ["Step 1: description", "Step 2: description", "Step 3: description"],
+            "growthOpportunities": "Description of career growth and advancement opportunities",
+            "requirements": "Education, experience, and certification requirements"
         }
     ]
 }`;
@@ -238,8 +275,10 @@ Format as JSON:
         // Use gemini-2.5-flash (available model that supports generateContent)
         const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
         
-        const systemPrompt = "You are an expert in AI education and professional development. Create detailed, actionable learning paths that help people achieve their AI career goals.";
-        const fullPrompt = `${systemPrompt}\n\n${prompt}`;
+        const systemPrompt = lang === 'ar' 
+            ? "أنت خبير في تعليم الذكاء الاصطناعي والتطوير المهني. أنشئ مسارات تعلم مفصلة وقابلة للتنفيذ تساعد الناس على تحقيق أهدافهم المهنية في الذكاء الاصطناعي. يجب أن تكون جميع الإجابات باللغة العربية."
+            : "You are an expert in AI education and professional development. Create detailed, actionable learning paths that help people achieve their AI career goals.";
+        const fullPrompt = `${systemPrompt}\n\n${languageInstruction}\n\n${prompt}`;
         
         const result = await model.generateContent(fullPrompt);
         const response = await result.response;
@@ -932,16 +971,129 @@ function getRoadmap(score, lang = 'en') {
     }
 }
 
-function generateFallbackLearningPath(role, experience, goals, timePerWeek) {
-    // Fallback logic - similar to existing client-side code
+function generateFallbackLearningPath(role, experience, goals, timePerWeek, lang = 'en') {
+    // Fallback logic with free/paid resources structure and detailed information
+    const isArabic = lang === 'ar';
+    
     return {
         curriculum: [
-            { topic: "AI Fundamentals", focus: "Understanding AI basics", resources: "Online courses" },
-            { topic: "Machine Learning", focus: "ML algorithms", resources: "Hands-on tutorials" }
+            { 
+                topic: isArabic ? "أساسيات الذكاء الاصطناعي" : "AI Fundamentals", 
+                focus: isArabic ? "فهم أساسيات الذكاء الاصطناعي، مفاهيم التعلم الآلي، وتطبيقاتها في العالم الحقيقي" : "Understanding AI basics, machine learning concepts, and their real-world applications", 
+                duration: isArabic ? "2-3 أسابيع" : "2-3 weeks",
+                resources: {
+                    free: [
+                        "AI for Everyone (Coursera, Audit Mode) - https://www.coursera.org/learn/ai-for-everyone",
+                        "Introduction to AI (edX, Audit Mode) - https://www.edx.org/learn/artificial-intelligence",
+                        "Khan Academy AI Course - https://www.khanacademy.org/computing/computer-science/artificial-intelligence"
+                    ],
+                    paid: [
+                        "AI Specialization (Coursera) - https://www.coursera.org/specializations/machine-learning-introduction",
+                        "Introduction to AI (Udacity) - https://www.udacity.com/course/intro-to-ai--cs271"
+                    ]
+                }
+            },
+            { 
+                topic: "Machine Learning", 
+                focus: "Understanding supervised and unsupervised learning, regression, classification, and clustering algorithms", 
+                duration: "3-4 weeks",
+                resources: {
+                    free: [
+                        "Machine Learning Course (Stanford, Coursera Audit) - https://www.coursera.org/learn/machine-learning",
+                        "Scikit-learn Documentation - https://scikit-learn.org/stable/",
+                        "Google's Machine Learning Crash Course - https://developers.google.com/machine-learning/crash-course"
+                    ],
+                    paid: [
+                        "Machine Learning Engineer Nanodegree (Udacity) - https://www.udacity.com/course/machine-learning-engineer-nanodegree--nd009t",
+                        "Machine Learning Specialization (Coursera) - https://www.coursera.org/specializations/machine-learning-introduction"
+                    ]
+                }
+            }
         ],
-        timeline: [{ week: 1, topic: "AI Fundamentals", description: "Start learning basics" }],
-        milestones: ["Complete fundamentals", "Build projects", "Get certified"],
-        careerPaths: [{ title: "AI Professional", description: "AI career path", skills: ["AI", "ML"] }]
+        timeline: [
+            { 
+                week: 1, 
+                topic: "AI Fundamentals", 
+                topics: ["Introduction to AI", "Types of AI", "AI Applications"],
+                description: "Start with understanding what AI is, its history, and current applications. Complete the first module of AI for Everyone course.",
+                hours: timePerWeek || "5-10",
+                activities: [
+                    "Watch introductory videos on AI",
+                    "Read articles about AI applications",
+                    "Complete Week 1 of Coursera course"
+                ],
+                projects: "Create a simple AI use case presentation"
+            },
+            { 
+                week: 2, 
+                topic: "Machine Learning Basics", 
+                topics: ["Supervised Learning", "Unsupervised Learning"],
+                description: "Learn the fundamentals of machine learning, including supervised and unsupervised learning approaches.",
+                hours: timePerWeek || "5-10",
+                activities: [
+                    "Study ML algorithms",
+                    "Practice with sample datasets",
+                    "Complete hands-on exercises"
+                ]
+            }
+        ],
+        milestones: isArabic ? [
+            { title: "إكمال أساسيات الذكاء الاصطناعي", description: "إنهاء جميع وحدات دورة أساسيات الذكاء الاصطناعي وفهم المفاهيم الأساسية" },
+            { title: "بناء أول مشروع تعلم آلي", description: "إنشاء ونشر نموذج تعلم آلي بسيط باستخدام بيانات حقيقية" },
+            { title: "الحصول على أول شهادة", description: "إكمال والحصول على شهادة من دورة واحدة على الأقل عبر الإنترنت" },
+            { title: "الانضمام لمجتمع الذكاء الاصطناعي", description: "الانضمام لمجتمعات الذكاء الاصطناعي، المشاركة في المنتديات، والتواصل مع المتعلمين الآخرين" },
+            { title: "إنشاء محفظة أعمال", description: "بناء محفظة تعرض مشاريعك في الذكاء الاصطناعي ورحلتك التعليمية" },
+            { title: "تطبيق المهارات", description: "تطبيق مهارات الذكاء الاصطناعي لحل مشكلة حقيقية في مجالك أو مجال اهتمامك" }
+        ] : [
+            { title: "Complete AI Fundamentals", description: "Finish all modules of the AI fundamentals course and understand core concepts" },
+            { title: "Build First ML Project", description: "Create and deploy a simple machine learning model using real data" },
+            { title: "Earn First Certification", description: "Complete and earn a certificate from at least one online course" },
+            { title: "Join AI Community", description: "Join AI communities, participate in forums, and network with other learners" },
+            { title: "Create Portfolio", description: "Build a portfolio showcasing your AI projects and learning journey" },
+            { title: "Apply Skills", description: "Apply AI skills to solve a real-world problem in your domain or field of interest" }
+        ],
+        careerPaths: [
+            { 
+                title: isArabic ? "مهندس ذكاء اصطناعي/تعلم آلي" : "AI/ML Engineer", 
+                description: isArabic ? "تصميم وتنفيذ أنظمة التعلم الآلي وحلول الذكاء الاصطناعي للشركات. العمل على تطوير الخوارزميات، تدريب النماذج، ونشر تطبيقات الذكاء الاصطناعي" : "Design and implement machine learning systems and AI solutions for businesses. Work on developing algorithms, training models, and deploying AI applications.",
+                skills: isArabic ? ["Python", "التعلم الآلي", "التعلم العميق", "TensorFlow/PyTorch", "علم البيانات"] : ["Python", "Machine Learning", "Deep Learning", "TensorFlow/PyTorch", "Data Science"],
+                steps: isArabic ? [
+                    "إتقان برمجة Python ومكتبات علم البيانات",
+                    "إكمال دورات التعلم الآلي والتعلم العميق",
+                    "بناء مشاريع محفظة",
+                    "الحصول على شهادات في أطر التعلم الآلي",
+                    "التقدم لوظائف المستوى المبتدئ"
+                ] : [
+                    "Master Python programming and data science libraries",
+                    "Complete ML and DL courses",
+                    "Build portfolio projects",
+                    "Get certified in ML frameworks",
+                    "Apply for entry-level positions"
+                ],
+                requirements: isArabic ? "بكالوريوس في علوم الحاسوب/الرياضيات/الهندسة، مهارات برمجية قوية، معرفة بالتعلم الآلي" : "Bachelor's in CS/Math/Engineering, strong programming skills, ML knowledge",
+                growthOpportunities: isArabic ? "يمكن التقدم إلى مهندس تعلم آلي أول، مهندس معماري للتعلم الآلي، أو باحث في الذكاء الاصطناعي" : "Can advance to Senior ML Engineer, ML Architect, or AI Research Scientist roles"
+            },
+            { 
+                title: isArabic ? "عالم بيانات" : "Data Scientist", 
+                description: isArabic ? "تحليل البيانات المعقدة لاستخراج الرؤى وبناء النماذج التنبؤية. العمل مع مجموعات البيانات الكبيرة لحل المشاكل التجارية باستخدام التقنيات الإحصائية والتعلم الآلي" : "Analyze complex data to extract insights and build predictive models. Work with large datasets to solve business problems using statistical and ML techniques.",
+                skills: isArabic ? ["الإحصاء", "Python/R", "SQL", "تصور البيانات", "التعلم الآلي"] : ["Statistics", "Python/R", "SQL", "Data Visualization", "Machine Learning"],
+                steps: isArabic ? [
+                    "تعلم الإحصاء وتحليل البيانات",
+                    "إتقان أدوات معالجة البيانات",
+                    "بناء مشاريع علم البيانات",
+                    "الحصول على خبرة صناعية",
+                    "متابعة الشهادات المتقدمة"
+                ] : [
+                    "Learn statistics and data analysis",
+                    "Master data manipulation tools",
+                    "Build data science projects",
+                    "Get industry experience",
+                    "Pursue advanced certifications"
+                ],
+                requirements: isArabic ? "درجة في الإحصاء/الرياضيات/علوم الحاسوب، مهارات تحليلية قوية، إتقان البرمجة" : "Degree in Statistics/Math/CS, strong analytical skills, programming proficiency",
+                growthOpportunities: isArabic ? "يمكن أن تصبح عالم بيانات رئيسي، مدير علم البيانات، أو رئيس البيانات" : "Can become Lead Data Scientist, Data Science Manager, or Chief Data Officer"
+            }
+        ]
     };
 }
 
