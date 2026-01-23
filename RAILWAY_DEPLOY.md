@@ -96,3 +96,4 @@ SMTP_PORT=587
 
 **ملاحظة**: تأكد من أن جميع الملفات الحساسة موجودة في .gitignore و .railwayignore
 
+

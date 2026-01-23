@@ -1,156 +1,176 @@
 const express = require('express');
 const cors = require('cors');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-// Serve static files (HTML, CSS, JS)
-app.use(express.static('.'));
-
-// Serve index.html for root route
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/index.html');
-});
+// Serve static files (HTML, CSS, JS, images)
+app.use(express.static(__dirname));
 
 // Initialize Google Gemini AI client
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'your-api-key-here');
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3000;
 
 // Tool 1: AI Skills Gap Analyzer
 app.post('/api/analyze-skills-gap', async (req, res) => {
     try {
-        const { answers, organizationInfo, language = 'en' } = req.body;
+        const { answers, organizationInfo, language } = req.body;
+        const lang = language === 'ar' ? 'ar' : 'en'; // Default to English if not specified
+        
+        // Validate input
+        if (!answers || !Array.isArray(answers) || answers.length !== 14) {
+            return res.status(400).json({ 
+                error: 'Invalid input: answers must be an array of 14 numbers' 
+            });
+        }
         
         // Calculate base score
         const totalScore = answers.reduce((sum, score) => sum + score, 0);
         const readinessScore = Math.round(totalScore / answers.length);
         
-        // Use LLM to generate personalized analysis
-        const isArabic = language === 'ar';
+        // Determine National AI Index maturity level
+        const maturityLevel = getNAIIMaturityLevel(readinessScore);
         
-        let prompt, systemPrompt;
-        
-        if (isArabic) {
-            systemPrompt = "أنت خبير استشاري في استراتيجية الذكاء الاصطناعي مع معرفة عميقة بتحول المنظمات في الذكاء الاصطناعي وبناء القدرات والنضج الرقمي. يجب أن تكون جميع إجاباتك باللغة العربية فقط. جميع النصوص في priorityGaps و roadmap و benchmark.message و insights يجب أن تكون بالعربية.";
-            
-            prompt = `كخبير استشاري في الذكاء الاصطناعي، حلل تقييم جاهزية هذه المنظمة للذكاء الاصطناعي:
+        // Use LLM to generate personalized analysis based on National AI Index methodology
+        const languageInstruction = lang === 'ar' ? 'IMPORTANT: Provide ALL responses in Arabic (العربية). All text including priority gaps, roadmap steps, and strategic insights must be in Arabic.' : 'IMPORTANT: Provide ALL responses in English.';
+        const prompt = `As an AI consultant specializing in the SDAIA National AI Index methodology, analyze this organization's AI readiness assessment:
 
-نقاط الجاهزية: ${readinessScore}/100
+${languageInstruction}
 
-إجابات التقييم:
-- مستوى اعتماد الذكاء الاصطناعي: ${answers[0]}/100
-- جودة البيانات: ${answers[1]}/100
-- الخبرة التقنية: ${answers[2]}/100
-- البنية التحتية: ${answers[3]}/100
-- التزام القيادة: ${answers[4]}/100
-- إدارة التغيير: ${answers[5]}/100
-- تخصيص الميزانية: ${answers[6]}/100
-- فهم حالات الاستخدام: ${answers[7]}/100
+National AI Index Readiness Score: ${readinessScore}/100
+National AI Index Maturity Level: ${maturityLevel.level} - ${maturityLevel.name.en}
 
-${organizationInfo ? `سياق المنظمة: ${organizationInfo}` : ''}
-
-قدم تحليلاً مهنياً يتضمن:
-1. أهم 3 فجوات مهارات ذات أولوية (كن محدداً وقابلاً للتنفيذ)
-2. خارطة طريق عمل مع 4-5 خطوات ملموسة
-3. مقارنة معيار الصناعة مع السياق
-
-**مهم جداً: جميع الإجابات يجب أن تكون باللغة العربية فقط.**
-
-التنسيق كـ JSON:
-{
-    "priorityGaps": ["الفجوة 1 بالعربية", "الفجوة 2 بالعربية", "الفجوة 3 بالعربية"],
-    "roadmap": ["الخطوة 1 بالعربية", "الخطوة 2 بالعربية", "الخطوة 3 بالعربية", "الخطوة 4 بالعربية"],
-    "benchmark": {
-        "industryAvg": رقم,
-        "topPerformers": رقم,
-        "message": "رسالة بالعربية"
-    },
-    "insights": "رؤى إضافية مهنية بالعربية"
-}`;
-        } else {
-            systemPrompt = "You are an expert AI strategy consultant with deep knowledge of organizational AI transformation, capacity building, and digital maturity. Provide professional, actionable insights.";
-            
-            prompt = `As an AI consultant, analyze this organization's AI readiness assessment:
-
-Readiness Score: ${readinessScore}/100
-
-Assessment Answers:
-- AI Adoption Level: ${answers[0]}/100
-- Data Quality: ${answers[1]}/100
-- Technical Expertise: ${answers[2]}/100
-- Infrastructure: ${answers[3]}/100
-- Leadership Commitment: ${answers[4]}/100
-- Change Management: ${answers[5]}/100
-- Budget Allocation: ${answers[6]}/100
-- Use Case Understanding: ${answers[7]}/100
+Assessment Answers (based on National AI Index three pillars - Directions, Enablers, Outputs):
+- Strategic Planning & Performance: ${answers[0]}/100
+- AI Initiatives: ${answers[1]}/100
+- Budget Allocation: ${answers[2]}/100
+- Frameworks & Policies: ${answers[3]}/100
+- Regulatory Compliance: ${answers[4]}/100
+- Data Availability & Access: ${answers[5]}/100
+- Data Quality & Integration: ${answers[6]}/100
+- Technical Infrastructure: ${answers[7]}/100
+- Number & Diversity of AI Talent: ${answers[8]}/100
+- Professional Development: ${answers[9]}/100
+- AI Application Development & Deployment: ${answers[10]}/100
+- Privacy & Security: ${answers[11]}/100
+- Operational Efficiency: ${answers[12]}/100
+- Service Quality & Improvement: ${answers[13]}/100
 
 ${organizationInfo ? `Organization Context: ${organizationInfo}` : ''}
 
-Provide a professional analysis with:
-1. Top 3 priority skill gaps (be specific and actionable)
-2. An action roadmap with 4-5 concrete steps
-3. Industry benchmark comparison with context
+Provide a professional analysis aligned with National AI Index methodology. IMPORTANT: Make the insights highly personalized and specific to the assessment scores provided. Do NOT use generic templates.
+
+1. Top 5 priority gaps based on National AI Index domains (be specific and actionable, reference National AI Index pillars - Directions, Enablers, Outputs). Each gap should be detailed and include the specific National AI Index domain affected. Base gaps on the actual low scores provided.
+
+2. An action roadmap with 4-5 concrete steps aligned with National AI Index maturity progression from current level ${maturityLevel.level} to level ${maturityLevel.level < 5 ? maturityLevel.level + 1 : 5}.
+
+3. Comprehensive strategic insights (3-4 paragraphs) that MUST be personalized based on:
+   - The specific maturity level ${maturityLevel.level} (${maturityLevel.name.en}) and what it means for this organization
+   - The weakest performing pillar (calculate from the scores: Directions average=${Math.round((answers[0] + answers[1] + answers[2] + answers[3] + answers[4]) / 5)}, Enablers average=${Math.round((answers[5] + answers[6] + answers[7] + answers[8] + answers[9]) / 5)}, Outputs average=${Math.round((answers[10] + answers[11] + answers[12] + answers[13]) / 4)})
+   - Specific low-scoring domains (scores below 40: ${answers.map((a, i) => a < 40 ? `Domain ${i}: ${a}` : null).filter(x => x).join(', ') || 'none'})
+   - Current budget allocation score: ${answers[2]}/100
+   - Current infrastructure score: ${answers[7]}/100
+   - Current talent score: ${answers[8]}/100
+   - Key opportunities for advancement to next level
+   - Alignment with Vision 2030 objectives
+   - Long-term strategic recommendations
+   - Risk considerations and mitigation strategies based on actual scores
+
+The insights MUST be unique and reflect the specific assessment results. Do not use generic statements.
 
 Format as JSON:
 {
-    "priorityGaps": ["gap1", "gap2", "gap3"],
+    "priorityGaps": ["gap1", "gap2", "gap3", "gap4", "gap5"],
     "roadmap": ["step1", "step2", "step3", "step4"],
-    "benchmark": {
-        "industryAvg": number,
-        "topPerformers": number,
-        "message": "contextual message"
-    },
-    "insights": "additional professional insights"
+    "insights": "comprehensive strategic insights (3-4 paragraphs) that are personalized to the specific scores and maturity level provided"
 }`;
-        }
+
+        // Use gemini-2.5-flash (available model that supports generateContent)
+        const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
         
-        // Try newer model names, fallback to gemini-pro if needed
-        let model;
-        try {
-            model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        } catch (e) {
-            try {
-                model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
-            } catch (e2) {
-                model = genAI.getGenerativeModel({ model: "gemini-pro" });
-            }
-        }
+        const systemPrompt = "You are an expert AI strategy consultant with deep knowledge of the SDAIA National AI Index methodology, organizational AI transformation aligned with Saudi Vision 2030, capacity building, and digital maturity. Provide professional, actionable insights based on the National AI Index three pillars: Directions (التوجهات), Enablers (الممكنات), and Outputs (المخرجات).";
         const fullPrompt = `${systemPrompt}\n\n${prompt}`;
-        
-        const result = await model.generateContent(fullPrompt);
-        const response = await result.response;
-        let text = response.text();
-        
-        // Clean up the response - remove markdown code blocks if present
-        text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         
         let analysis;
         try {
-            analysis = JSON.parse(text);
+            const result = await model.generateContent(fullPrompt);
+            const response = await result.response;
+            let text = response.text();
             
-            // If Arabic was requested, verify the response is actually in Arabic
-            if (isArabic && analysis.priorityGaps && analysis.priorityGaps.length > 0) {
-                const firstGap = analysis.priorityGaps[0];
-                const hasArabic = /[\u0600-\u06FF]/.test(firstGap);
-                if (!hasArabic) {
-                    console.log('AI returned English instead of Arabic, using Arabic fallback');
-                    analysis = generateFallbackAnalysis(answers, readinessScore, language);
-                }
+            // Clean up the response - remove markdown code blocks if present
+            text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            
+            try {
+                analysis = JSON.parse(text);
+                console.log('AI Analysis received:', {
+                    hasGaps: !!analysis.priorityGaps,
+                    hasRoadmap: !!analysis.roadmap,
+                    hasInsights: !!analysis.insights,
+                    insightsLength: analysis.insights ? analysis.insights.length : 0
+                });
+            } catch (parseError) {
+                console.error('JSON parse error:', parseError);
+                console.log('Using fallback analysis');
+                analysis = generateFallbackAnalysis(answers, readinessScore, lang);
             }
-        } catch (parseError) {
-            console.error('JSON parse error:', parseError);
-            analysis = generateFallbackAnalysis(answers, readinessScore, language);
+        } catch (aiError) {
+            console.error('AI generation error (using fallback):', aiError.message);
+            // Use fallback analysis if AI fails
+            analysis = generateFallbackAnalysis(answers, readinessScore, lang);
         }
         
-        // Fallback to static analysis if LLM fails
-        if (!analysis.priorityGaps || !analysis.roadmap) {
-            analysis = generateFallbackAnalysis(answers, readinessScore, language);
+        // Always use dynamic insights to ensure personalization based on actual scores
+        // Generate dynamic insights based on actual assessment results
+        // Note: maturityLevel is already calculated above, reuse it
+        const nextLevel = maturityLevel.level < 5 ? maturityLevel.level + 1 : 5;
+        
+        // Calculate pillar scores
+        const directionsScore = (answers[0] + answers[1] + answers[2] + answers[3] + answers[4]) / 5;
+        const enablersScore = (answers[5] + answers[6] + answers[7] + answers[8] + answers[9]) / 5;
+        const outputsScore = (answers[10] + answers[11] + answers[12] + answers[13]) / 4;
+        
+        // Identify weakest pillar
+        const pillarScores = [
+            { name: 'Directions', score: directionsScore },
+            { name: 'Enablers', score: enablersScore },
+            { name: 'Outputs', score: outputsScore }
+        ];
+        const weakestPillar = pillarScores.reduce((min, pillar) => pillar.score < min.score ? pillar : min);
+        
+        // ALWAYS use dynamic insights to ensure personalization
+        const dynamicInsights = generateDynamicInsights(readinessScore, maturityLevel, nextLevel, weakestPillar, answers, lang);
+        
+        // Generate fallback with proper language support
+        const fallback = generateFallbackAnalysis(answers, readinessScore, lang);
+        
+        // When language is Arabic, prioritize fallback to ensure Arabic content
+        // For English, try AI-generated first, then fallback
+        if (lang === 'ar') {
+            // Always use Arabic fallback for gaps and roadmap to ensure proper Arabic translation
+            analysis = {
+                priorityGaps: fallback.priorityGaps,
+                roadmap: fallback.roadmap,
+                insights: dynamicInsights // Always use dynamic insights for personalization
+            };
+        } else {
+            // For English, use AI-generated if available, otherwise fallback
+            analysis = {
+                priorityGaps: analysis.priorityGaps || fallback.priorityGaps,
+                roadmap: analysis.roadmap || fallback.roadmap,
+                insights: dynamicInsights // Always use dynamic insights for personalization
+            };
         }
+        
+        console.log('Final analysis:', {
+            gapsCount: analysis.priorityGaps.length,
+            roadmapCount: analysis.roadmap.length,
+            insightsLength: analysis.insights.length,
+            readinessScore: readinessScore,
+            maturityLevel: maturityLevel.level
+        });
 
         res.json({
             readinessScore,
@@ -159,12 +179,13 @@ Format as JSON:
     } catch (error) {
         console.error('Error in skills gap analysis:', error);
         // Fallback to static analysis
-        const { answers, language = 'en' } = req.body;
+        const { answers, language } = req.body;
+        const fallbackLang = language === 'ar' ? 'ar' : 'en';
         const totalScore = answers.reduce((sum, score) => sum + score, 0);
         const readinessScore = Math.round(totalScore / answers.length);
         res.json({
             readinessScore,
-            ...generateFallbackAnalysis(answers, readinessScore, language)
+            ...generateFallbackAnalysis(answers, readinessScore, fallbackLang)
         });
     }
 });
@@ -172,95 +193,9 @@ Format as JSON:
 // Tool 2: Learning Path Generator
 app.post('/api/generate-learning-path', async (req, res) => {
     try {
-        const { role, experience, goals, timePerWeek, industry, language = 'en' } = req.body;
+        const { role, experience, goals, timePerWeek, industry } = req.body;
         
-        const isArabic = language === 'ar';
-        
-        // Calculate total weeks based on time per week (aim for 8-16 weeks for a focused path)
-        const totalWeeks = Math.max(8, Math.min(16, Math.ceil(80 / timePerWeek))); // 80 hours total
-        
-        let prompt, systemPrompt;
-        
-        if (isArabic) {
-            systemPrompt = "أنت خبير في تعليم الذكاء الاصطناعي والتطوير المهني. أنشئ مسارات تعلم مفصلة وعملية تساعد الناس على تحقيق أهدافهم المهنية في الذكاء الاصطناعي. يجب أن تكون جميع الإجابات باللغة العربية.";
-            
-            prompt = `كخبير في تعليم الذكاء الاصطناعي، أنشئ مسار تعلم مخصص ل:
-
-الدور: ${role}
-مستوى الخبرة: ${experience}
-أهداف التعلم: ${goals}
-الوقت المتاح: ${timePerWeek} ساعة في الأسبوع
-${industry ? `القطاع: ${industry}` : ''}
-
-أنشئ مسار تعلم شامل ومهني يتضمن:
-
-1. منهج مخصص مع 8-12 موضوعاً (كل موضوع يجب أن يحتوي على):
-   - اسم الموضوع (بالعربية)
-   - وصف مفصل للمحتوى والتركيز (بالعربية)
-   - موارد محددة وواقعية (دورات، كتب، منصات، مشاريع) مع روابط فعلية - يجب أن تكون جميع أسماء الموارد والوصف بالعربية، مع روابط URL صحيحة
-   - المدة المتوقعة لكل موضوع (بالعربية)
-
-2. جدول زمني أسبوعي تفصيلي لـ ${totalWeeks} أسبوع على الأقل، يتضمن:
-   - الأسبوع
-   - الموضوع/المواضيع لهذا الأسبوع
-   - المهام والأنشطة المحددة
-   - المشاريع العملية
-   - الوقت المطلوب
-
-3. معالم رئيسية (8-10 معالم) مع معايير واضحة للإنجاز
-
-4. مسارات مهنية (4-5 مسارات) مع:
-   - العنوان
-   - الوصف التفصيلي
-   - المهارات المطلوبة
-   - الخطوات المحددة للوصول إلى هذا المسار
-
-**مهم جداً - يجب التخصيص بناءً على المدخلات:**
-- حلل دور المستخدم: ${role} - هذا يحدد نقطة البداية والعمق
-- حلل مستوى الخبرة: ${experience} - المبتدئون يحتاجون أساسيات، المحترفون/المتقدمون يتخطون الأساسيات
-- حلل أهداف التعلم: "${goals}" - هذا هو المجال الرئيسي للتركيز. إذا ذكروا "agentic AI" أو "أجنتيك"، ركز بشدة على ذلك. إذا ذكروا NLP، ركز على NLP. طابق المنهج مع أهدافهم المحددة.
-- الوقت المتاح: ${timePerWeek} ساعة/أسبوع يعني ${totalWeeks} أسبوع إجمالي - أنشئ جدولاً زمنياً واقعياً
-- يجب أن يكون المسار مخصصاً: محترف يريد agentic AI يجب أن يحصل على محتوى متقدم في agentic AI، وليس أساسيات ML
-- جميع النصوص يجب أن تكون بالعربية (الموضوع، الوصف، الموارد، إلخ)
-- قدم موارد حقيقية ومحددة مع روابط فعلية - استخدم أسماء عربية للموارد مع روابط URL (مثل: "دورة Coursera - Machine Learning - https://www.coursera.org/learn/machine-learning"، "كتاب Hands-On Machine Learning - https://www.oreilly.com/library/view/hands-on-machine-learning/9781492032632/"، "منصة Kaggle Learn - https://www.kaggle.com/learn"، إلخ)
-- يجب أن يكون الجدول الزمني واقعياً ويغطي ${totalWeeks} أسبوع بناءً على ${timePerWeek} ساعة/أسبوع
-- ركز على التعلم العملي والمشاريع
-- استخدم فاصلة عربية (،) أو شرطة (-) لفصل الموارد
-- لا تعطي مسارات عامة - حلل المدخلات وأنشئ شيئاً محدداً
-
-التنسيق كـ JSON:
-{
-    "curriculum": [
-        {
-            "topic": "اسم الموضوع بالعربية",
-            "focus": "وصف مفصل بالعربية",
-            "resources": "اسم المورد - https://url.com أو اسم المورد: https://url.com",
-            "duration": "المدة المتوقعة"
-        }
-    ],
-    "timeline": [
-        {
-            "week": 1,
-            "topics": ["الموضوع 1", "الموضوع 2"],
-            "description": "وصف تفصيلي للمهام والأنشطة",
-            "projects": "المشاريع العملية",
-            "hours": ${timePerWeek}
-        }
-    ],
-    "milestones": ["معلم 1", "معلم 2", ...],
-    "careerPaths": [
-        {
-            "title": "عنوان المسار",
-            "description": "وصف تفصيلي",
-            "skills": ["مهارة 1", "مهارة 2"],
-            "steps": ["خطوة 1", "خطوة 2"]
-        }
-    ]
-}`;
-        } else {
-            systemPrompt = "You are an expert in AI education and professional development. Create detailed, professional, and advanced learning paths that help people achieve their AI career goals. Provide real, specific resources with actual course names, books, and platforms.";
-            
-            prompt = `As an AI education expert, create a comprehensive, professional learning path for:
+        const prompt = `As an AI education expert, create a personalized learning path for:
 
 Role: ${role}
 Experience Level: ${experience}
@@ -268,184 +203,47 @@ Learning Goals: ${goals}
 Time Available: ${timePerWeek} hours per week
 ${industry ? `Industry: ${industry}` : ''}
 
-Create a detailed, professional learning path that includes:
-
-1. A custom curriculum with 8-12 topics (each topic must include):
-   - Topic name
-   - Detailed description of content and focus
-   - Specific, real resources with actual URLs/links (format: "Resource Name - URL" or "Resource Name: URL")
-   - Expected duration for each topic
-
-2. A detailed week-by-week timeline for at least ${totalWeeks} weeks, including:
-   - Week number
-   - Topic(s) for this week
-   - Specific tasks and activities
-   - Hands-on projects
-   - Time required
-
-3. Key milestones (8-10 milestones) with clear achievement criteria
-
-4. Career pathways (4-5 paths) with:
-   - Title
-   - Detailed description
-   - Required skills
-   - Specific steps to reach this pathway
-
-**CRITICAL - YOU ARE AN INTELLIGENT AGENT. THINK AND REASON BASED ON ALL INPUTS:**
-
-You must analyze and reason about ALL the following inputs together to generate a truly personalized learning path:
-
-1. **ROLE ANALYSIS**: Current Role = "${role}"
-   - Think: What does this role imply? Student needs job readiness, Professional needs career advancement, Researcher needs cutting-edge topics
-   - This role should influence EVERY aspect: curriculum depth, milestones, career paths
-
-2. **EXPERIENCE ANALYSIS**: Experience Level = "${experience}"
-   - Think: Beginner needs fundamentals and building blocks. Intermediate needs practical application. Advanced/Professional can skip basics and dive deep
-   - This determines starting point and complexity level
-
-3. **GOALS ANALYSIS**: Learning Goals = "${goals}"
-   - Think: What specific topics, skills, or outcomes are mentioned? Extract key themes
-   - This is the PRIMARY focus - the curriculum MUST align with these goals
-   - If goals mention "agentic AI" → focus heavily on agents, tools, planning
-   - If goals mention "NLP" → focus on transformers, LLMs, language models
-   - If goals mention "computer vision" → focus on CV, image processing
-   - DO NOT add topics that aren't related to the goals
-
-4. **TIME ANALYSIS**: Time Available = ${timePerWeek} hours/week = ${totalWeeks} weeks total
-   - Think: How much can realistically be covered in this time?
-   - Adjust timeline and curriculum depth accordingly
-   - More time = deeper topics, more projects
-   - Less time = focused, essential topics only
-
-5. **REASONING REQUIREMENT**:
-   - Combine ALL inputs above to create a coherent, personalized path
-   - A student beginner wanting NLP with 5 hours/week needs different content than a professional advanced wanting NLP with 20 hours/week
-   - Milestones should reflect the role (students get "job ready", professionals get "leadership" or "expertise")
-   - Career paths should match the role and goals
-
-6. **RESOURCE REQUIREMENT**:
-   - Provide real, specific resources with actual URLs
-   - Format: "Resource Name - URL" or "Resource Name: URL"
-   - Examples: "Coursera - Machine Learning by Andrew Ng - https://www.coursera.org/learn/machine-learning"
-
-**DO NOT USE HARDCODED RULES. REASON FROM THE INPUTS.**
-**DO NOT GIVE GENERIC PATHS. EVERY PATH MUST BE UNIQUE BASED ON THESE SPECIFIC INPUTS.**
+Create a comprehensive, structured learning path that includes:
+1. A custom curriculum with 5-7 topics (each with topic name, focus description, and recommended resources)
+2. A week-by-week timeline based on time availability
+3. Key milestones (6 specific milestones)
+4. Career pathways (3-4 relevant paths with descriptions and required skills)
 
 Format as JSON:
 {
     "curriculum": [
         {
             "topic": "Topic Name",
-            "focus": "Detailed description",
-            "resources": "Resource Name - https://url.com or Resource Name: https://url.com",
-            "duration": "Expected duration"
+            "focus": "What to focus on",
+            "resources": "Recommended resources"
         }
     ],
     "timeline": [
         {
             "week": 1,
-            "topics": ["Topic 1", "Topic 2"],
-            "description": "Detailed tasks and activities",
-            "projects": "Hands-on projects",
-            "hours": ${timePerWeek}
+            "topic": "Topic name",
+            "description": "What to do this week"
         }
     ],
     "milestones": ["milestone1", "milestone2", ...],
     "careerPaths": [
         {
             "title": "Career Title",
-            "description": "Detailed description",
-            "skills": ["skill1", "skill2"],
-            "steps": ["step1", "step2"]
+            "description": "Description",
+            "skills": ["skill1", "skill2"]
         }
     ]
 }`;
-        }
+
+        // Use gemini-2.5-flash (available model that supports generateContent)
+        const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
         
-        // Try to list available models first
-        let model;
-        let modelName;
-        let availableModels = [];
-        
-        // Check API key first
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey || apiKey === 'your-api-key-here') {
-            throw new Error('GEMINI_API_KEY is not set or is invalid in .env file. Please set a valid API key.');
-        }
-        
-        try {
-            // Try to get list of available models using the REST API
-            const modelsResponse = await fetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`);
-            if (modelsResponse.ok) {
-                const modelsData = await modelsResponse.json();
-                if (modelsData.models && Array.isArray(modelsData.models)) {
-                    availableModels = modelsData.models
-                        .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
-                        .map(m => m.name.replace('models/', ''));
-                    console.log('📋 Available models from API:', availableModels);
-                } else {
-                    console.log('⚠️ No models found in API response');
-                }
-            } else {
-                const errorText = await modelsResponse.text();
-                console.log('⚠️ Failed to list models:', modelsResponse.status, errorText.substring(0, 200));
-                if (modelsResponse.status === 401 || modelsResponse.status === 403) {
-                    throw new Error(`API key authentication failed (${modelsResponse.status}). Please check your GEMINI_API_KEY is valid.`);
-                }
-            }
-        } catch (listError) {
-            if (listError.message && listError.message.includes('authentication')) {
-                throw listError;
-            }
-            console.log('⚠️ Could not list models via REST API, trying common model names...', listError.message);
-            // Try common model names
-            availableModels = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro", "gemini-1.0-pro"];
-        }
-        
-        // If no models from list, try common names
-        if (availableModels.length === 0) {
-            availableModels = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro", "gemini-1.0-pro"];
-        }
-        
-        let workingModel = null;
-        let lastError = null;
-        
-        // Try each model - just initialize, don't test (testing might fail even if model works)
-        for (const testModelName of availableModels) {
-            try {
-                const testModel = genAI.getGenerativeModel({ model: testModelName });
-                workingModel = testModel;
-                modelName = testModelName;
-                console.log(`✅ Using model: ${testModelName}`);
-                break;
-            } catch (e) {
-                lastError = e;
-                console.log(`❌ Model ${testModelName} initialization failed:`, e.message?.substring(0, 100));
-                continue;
-            }
-        }
-        
-        if (!workingModel) {
-            throw new Error(`No working AI model found. Please check your GEMINI_API_KEY. Last error: ${lastError?.message || 'Unknown'}. Tried: ${availableModels.join(', ')}`);
-        }
-        
-        model = workingModel;
+        const systemPrompt = "You are an expert in AI education and professional development. Create detailed, actionable learning paths that help people achieve their AI career goals.";
         const fullPrompt = `${systemPrompt}\n\n${prompt}`;
         
-        console.log(`🤖 Calling AI agent (${modelName}) to generate personalized learning path based on:`, { role, experience, goals, timePerWeek, language });
-        console.log(`📝 Prompt length: ${fullPrompt.length} characters`);
-        
-        let result, response, text;
-        try {
-            result = await model.generateContent(fullPrompt);
-            response = await result.response;
-            text = response.text();
-            console.log('✅ AI agent response received, length:', text.length, 'characters');
-            console.log('📄 AI agent response preview:', text.substring(0, 200));
-        } catch (apiError) {
-            console.error('❌ AI API call failed:', apiError.message);
-            throw new Error(`AI model call failed: ${apiError.message}. Please check your GEMINI_API_KEY.`);
-        }
+        const result = await model.generateContent(fullPrompt);
+        const response = await result.response;
+        let text = response.text();
         
         // Clean up the response - remove markdown code blocks if present
         text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
@@ -453,1081 +251,1196 @@ Format as JSON:
         let learningPath;
         try {
             learningPath = JSON.parse(text);
-            console.log('✅ Successfully parsed AI response');
-            
-            // Validate AI response - throw error if invalid, NO FALLBACK
-            if (!learningPath.curriculum || !Array.isArray(learningPath.curriculum) || learningPath.curriculum.length === 0) {
-                // Try to extract curriculum from other fields
-                if (learningPath.topics && Array.isArray(learningPath.topics)) {
-                    learningPath.curriculum = learningPath.topics;
-                }
-                if (!learningPath.curriculum || learningPath.curriculum.length === 0) {
-                    throw new Error('AI agent did not generate a valid curriculum. Response was invalid.');
-                }
-            }
-            
-            // Timeline check - try to fix but throw error if can't, NO FALLBACK
-            if (!learningPath.timeline || !Array.isArray(learningPath.timeline)) {
-                // Create a basic timeline from curriculum if possible
-                if (learningPath.curriculum && learningPath.curriculum.length > 0) {
-                    learningPath.timeline = learningPath.curriculum.map((item, idx) => ({
-                        week: idx + 1,
-                        topics: [item.topic || item.name || 'Topic'],
-                        description: item.focus || item.description || '',
-                        projects: item.projects || '',
-                        hours: timePerWeek
-                    }));
-                } else {
-                    throw new Error('AI agent did not generate a valid timeline. Response was invalid.');
-                }
-            }
-            
-            console.log('✅ Using AI agent-generated learning path (AI analyzed all inputs: role, experience, goals, time)');
-            
         } catch (parseError) {
-            console.error('❌ JSON parse error:', parseError);
-            console.error('Raw AI response (first 1000 chars):', text.substring(0, 1000));
-            
-            // Try to extract JSON from the response
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                try {
-                    learningPath = JSON.parse(jsonMatch[0]);
-                    console.log('✅ Extracted JSON from AI response');
-                } catch (e2) {
-                    throw new Error(`AI agent response is not valid JSON. Raw response: ${text.substring(0, 200)}...`);
-                }
-            } else {
-                throw new Error(`AI agent response does not contain valid JSON. Raw response: ${text.substring(0, 200)}...`);
-            }
+            console.error('JSON parse error:', parseError);
+            learningPath = generateFallbackLearningPath(role, experience, goals, timePerWeek);
         }
         
-        // Final validation - throw error if invalid, NO FALLBACK
-        if (!learningPath || (!learningPath.curriculum && !learningPath.timeline && !learningPath.topics)) {
-            throw new Error('AI agent generated invalid response - missing required fields');
+        if (!learningPath.curriculum || !learningPath.timeline) {
+            learningPath = generateFallbackLearningPath(role, experience, goals, timePerWeek);
         }
-        
-        console.log('✅ Returning AI agent-generated personalized learning path');
 
         res.json(learningPath);
     } catch (error) {
-        console.error('❌ Error in learning path generation:', error);
-        console.error('❌ AI agent failed - returning error instead of fallback');
-        res.status(500).json({ 
-            error: 'AI agent failed to generate learning path', 
-            message: error.message,
-            details: 'The AI model is not available. Please check your GEMINI_API_KEY and try again.'
-        });
+        console.error('Error in learning path generation:', error);
+        const { role, experience, goals, timePerWeek } = req.body;
+        res.json(generateFallbackLearningPath(role, experience, goals, timePerWeek));
     }
 });
 
 // Tool 3: Job Skills Translator
 app.post('/api/analyze-job-skills', async (req, res) => {
     try {
-        const { jobTitle, responsibilities, industry, language = 'en' } = req.body;
-        const isArabic = language === 'ar';
+        const { jobTitle, responsibilities, industry, language } = req.body;
+        const lang = language === 'ar' ? 'ar' : 'en';
         
-        let systemPrompt, prompt;
+        const languageInstruction = lang === 'ar' 
+            ? 'IMPORTANT: Provide ALL responses in Arabic (العربية). All text including transformations, skills, career options, and upskilling plan must be in Arabic.'
+            : 'IMPORTANT: Provide ALL responses in English.';
         
-        if (isArabic) {
-            systemPrompt = "أنت خبير في تحويل المسارات المهنية والذكاء الاصطناعي. قدم تحليلاً شاملاً ومفصلاً. يجب أن تكون جميع الإجابات باللغة العربية.";
-            
-            prompt = `كخبير في تحويل المسارات المهنية والذكاء الاصطناعي، حلل هذا الدور:
+        const prompt = `You are analyzing a specific person's role. Analyze EXACTLY what they do and provide HIGHLY SPECIFIC insights.
 
-المسمى الوظيفي: ${jobTitle}
-المسؤوليات الرئيسية: ${responsibilities}
-القطاع: ${industry}
+PERSON'S INFORMATION:
+Job Title: "${jobTitle}"
+Key Responsibilities: "${responsibilities}"
+Industry/Field: "${industry}"
 
-قدم تحليلاً شاملاً لتحول المسار المهني:
-1. كيف سيحول الذكاء الاصطناعي هذا الدور المحدد (4-5 رؤى ملموسة)
-2. المهارات القابلة للنقل المرتكزة على الإنسان التي تبقى قيّمة (5-6 مهارات)
-3. المهارات التقنية واللينة الجديدة المطلوبة (قوائم منفصلة)
-4. خيارات الانتقال المهني (4-5 خيارات مع العناوين والأوصاف ومسارات الانتقال)
-5. خطة التطوير الفوري (6-8 خطوات قابلة للتنفيذ)
+${languageInstruction}
 
-التنسيق كـ JSON:
-{
-    "transformations": ["insight1", "insight2", ...],
-    "transferableSkills": ["skill1", "skill2", ...],
-    "newSkills": {
-        "technical": ["skill1", "skill2", ...],
-        "soft": ["skill1", "skill2", ...]
-    },
-    "careerOptions": [
-        {
-            "title": "Career Title",
-            "description": "Description",
-            "path": "step1 | step2 | step3"
-        }
-    ],
-    "upskillingPlan": ["step1", "step2", ...],
-    "opportunityAnalysis": "detailed opportunity analysis"
-}`;
+CRITICAL: You MUST analyze the EXACT field/domain from the job title and responsibilities above. 
+- If job title contains "history" or "تاريخ" → This person studies/works in HISTORY. Focus ONLY on how AI helps with HISTORICAL RESEARCH, analyzing historical documents, understanding historical patterns, NOT general education.
+- If job title contains "student" or "طالب" → This is a STUDENT. Look at what field they study from responsibilities. If responsibilities mention "history" or "تاريخ", they study HISTORY.
+- Extract the EXACT field from the information provided above.
 
-        } else {
-            systemPrompt = "You are an expert in AI workforce transformation, career development, and skills mapping. Help professionals understand how AI transforms their roles and provide actionable career guidance.";
-            
-            prompt = `As a career transformation and AI workforce expert, analyze this role:
+ANALYSIS REQUIREMENTS (MUST be specific to the EXACT field extracted above):
 
-Job Title: ${jobTitle}
-Key Responsibilities: ${responsibilities}
-Industry: ${industry}
+1. Transformations (4-5 insights): How AI helps in THIS EXACT FIELD based on "${jobTitle}" and "${responsibilities}"
+   - If history: "AI can analyze thousands of historical documents to find patterns" 
+   - If marketing: "AI can analyze customer behavior in marketing campaigns"
+   - MUST reference the actual field, NOT generic statements
 
-Provide a comprehensive career transformation analysis:
-1. How AI will transform this specific role (4-5 concrete insights)
-2. Transferable human-centric skills that remain valuable (5-6 skills)
-3. New technical and soft skills needed (separate lists)
-4. Career transition options (4-5 options with titles, descriptions, and transition paths)
-5. Immediate upskilling plan (6-8 actionable steps)
+2. Transferable Skills (5-6): Skills from "${responsibilities}" that are valuable in THIS FIELD
+   - Extract skills directly from the responsibilities text
+   - Field-specific skills, NOT generic
+
+3. New Skills: How to use AI tools in THIS EXACT FIELD
+   - Technical: Specific AI tools for this field (e.g., "AI tools for historical document analysis" if history)
+   - Soft: How to work with AI in this field context
+
+4. Career Options (4-5): How to use AI to enhance work in THIS FIELD (NOT transition to AI careers)
+   - Example for history: "History Researcher using AI tools for document analysis"
+   - Example for marketing: "Marketing Professional using AI for customer insights"
+   - MUST be about enhancing current field, NOT becoming AI engineer
+
+5. Upskilling Plan (6-8 steps): Learning AI applications SPECIFIC to THIS FIELD
+   - Field-specific tools and resources
+   - NOT general AI learning
+
+6. Opportunity Analysis: How AI improves work in THIS SPECIFIC FIELD based on "${responsibilities}"
+
+IMPORTANT: Every response MUST reference the actual field from "${jobTitle}" and "${responsibilities}". Do NOT use generic templates.
 
 Format as JSON:
 {
-    "transformations": ["insight1", "insight2", ...],
-    "transferableSkills": ["skill1", "skill2", ...],
+    "transformations": ["specific insight about AI in this field", ...],
+    "transferableSkills": ["skill from responsibilities", ...],
     "newSkills": {
-        "technical": ["skill1", "skill2", ...],
-        "soft": ["skill1", "skill2", ...]
+        "technical": ["AI tool for this specific field", ...],
+        "soft": ["skill for AI in this field", ...]
     },
     "careerOptions": [
         {
-            "title": "Career Title",
-            "description": "Description",
+            "title": "Role in this field using AI",
+            "description": "How to use AI in this specific field",
             "path": "step1 | step2 | step3"
         }
     ],
-    "upskillingPlan": ["step1", "step2", ...],
-    "opportunityAnalysis": "detailed opportunity analysis"
+    "upskillingPlan": ["field-specific step", ...],
+    "opportunityAnalysis": "How AI helps in this specific field based on responsibilities"
 }`;
-        }
 
-        // Use the same model selection logic as learning path
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey || apiKey === 'your-api-key-here') {
-            throw new Error('GEMINI_API_KEY is not set or is invalid in .env file. Please set a valid API key.');
-        }
+        // Use gemini-2.5-flash (available model that supports generateContent)
+        const model = genAI.getGenerativeModel({ model: "models/gemini-2.5-flash" });
         
-        let availableModels = [];
-        try {
-            const modelsResponse = await fetch(`https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`);
-            if (modelsResponse.ok) {
-                const modelsData = await modelsResponse.json();
-                if (modelsData.models && Array.isArray(modelsData.models)) {
-                    availableModels = modelsData.models
-                        .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
-                        .map(m => m.name.replace('models/', ''));
-                }
-            }
-        } catch (listError) {
-            console.log('⚠️ Could not list models, using defaults');
-        }
-        
-        if (availableModels.length === 0) {
-            availableModels = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro", "gemini-1.0-pro"];
-        }
-        
-        let model;
-        let modelName;
-        let workingModel = null;
-        
-        for (const testModelName of availableModels) {
-            try {
-                const testModel = genAI.getGenerativeModel({ model: testModelName });
-                workingModel = testModel;
-                modelName = testModelName;
-                break;
-            } catch (e) {
-                continue;
-            }
-        }
-        
-        if (!workingModel) {
-            throw new Error(`No working AI model found. Please check your GEMINI_API_KEY.`);
-        }
-        
-        model = workingModel;
+        const systemPrompt = lang === 'ar' 
+            ? `أنت خبير في تحول القوى العاملة بالذكاء الاصطناعي. مهمتك: تحليل الدور المحدد بدقة بناءً على المسمى الوظيفي والمسؤوليات المقدمة. يجب أن تكون كل إجابة محددة جداً للمجال المذكور. إذا كان الشخص يدرس التاريخ، ركز على كيفية مساعدة الذكاء الاصطناعي في البحث التاريخي. إذا كان مطور برمجيات، ركز على الذكاء الاصطناعي في تطوير البرمجيات. لا تستخدم قوالب عامة.`
+            : `You are an expert in AI workforce transformation. Your task: Analyze the EXACT role based on the job title and responsibilities provided. Every answer MUST be highly specific to the field mentioned. If the person studies history, focus on how AI helps with historical research. If they're a software developer, focus on AI in software development. Do NOT use generic templates.`;
         const fullPrompt = `${systemPrompt}\n\n${prompt}`;
         
-        console.log(`🤖 Calling AI agent (${modelName}) for job skills analysis, language: ${language}`);
-        
-        const result = await model.generateContent(fullPrompt);
-        const response = await result.response;
-        let text = response.text();
-        
-        console.log('✅ AI agent response received, length:', text.length, 'characters');
-        
-        // Clean up the response - remove markdown code blocks if present
-        text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        
         let analysis;
+        
+        // ALWAYS try AI-generated content first - let the AI agent generate personalized content
         try {
-            analysis = JSON.parse(text);
+            console.log('=== CALLING AI AGENT ===');
+            console.log('Job Title:', jobTitle);
+            console.log('Responsibilities:', responsibilities);
+            console.log('Industry:', industry);
+            console.log('Language:', lang);
             
-            // Validate response
-            if (!analysis.transformations || !Array.isArray(analysis.transformations)) {
-                throw new Error('AI agent did not generate valid transformations');
-            }
-            if (!analysis.careerOptions || !Array.isArray(analysis.careerOptions)) {
-                throw new Error('AI agent did not generate valid career options');
-            }
+            const result = await model.generateContent(fullPrompt);
+            const response = await result.response;
+            let text = response.text();
             
-            console.log('✅ Using AI agent-generated job skills analysis');
-        } catch (parseError) {
-            console.error('❌ JSON parse error:', parseError);
-            console.error('Raw AI response (first 1000 chars):', text.substring(0, 1000));
+            console.log('=== AI RESPONSE RECEIVED ===');
+            console.log('Response length:', text.length);
+            console.log('First 200 chars:', text.substring(0, 200));
             
-            // Try to extract JSON from the response
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                try {
-                    analysis = JSON.parse(jsonMatch[0]);
-                    console.log('✅ Extracted JSON from AI response');
-                } catch (e2) {
-                    throw new Error(`AI agent response is not valid JSON. Raw response: ${text.substring(0, 200)}...`);
+            // Clean up the response - remove markdown code blocks if present
+            text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            
+            try {
+                analysis = JSON.parse(text);
+                console.log('=== AI RESPONSE PARSED SUCCESSFULLY ===');
+                console.log('Has transformations:', !!analysis.transformations);
+                console.log('Has careerOptions:', !!analysis.careerOptions);
+                console.log('First transformation:', analysis.transformations?.[0]?.substring(0, 100));
+                
+                // VERY MINIMAL validation - only check if arrays exist, don't validate content
+                if (!analysis.transformations || !Array.isArray(analysis.transformations)) {
+                    console.log('WARNING: Missing transformations array, creating empty one');
+                    analysis.transformations = [];
                 }
-            } else {
-                throw new Error(`AI agent response does not contain valid JSON. Raw response: ${text.substring(0, 200)}...`);
+                if (!analysis.careerOptions || !Array.isArray(analysis.careerOptions)) {
+                    console.log('WARNING: Missing careerOptions array, creating empty one');
+                    analysis.careerOptions = [];
+                }
+                if (!analysis.transferableSkills || !Array.isArray(analysis.transferableSkills)) {
+                    console.log('WARNING: Missing transferableSkills, creating from responsibilities');
+                    analysis.transferableSkills = [];
+                }
+                if (!analysis.newSkills) {
+                    console.log('WARNING: Missing newSkills, creating default');
+                    analysis.newSkills = { technical: [], soft: [] };
+                }
+                if (!analysis.upskillingPlan || !Array.isArray(analysis.upskillingPlan)) {
+                    console.log('WARNING: Missing upskillingPlan, creating empty one');
+                    analysis.upskillingPlan = [];
+                }
+                if (!analysis.opportunityAnalysis) {
+                    console.log('WARNING: Missing opportunityAnalysis, creating default');
+                    analysis.opportunityAnalysis = '';
+                }
+                
+                // ALWAYS use AI response - don't fall back unless it's completely broken
+                console.log('=== USING AI-GENERATED CONTENT ===');
+                
+            } catch (parseError) {
+                console.error('=== JSON PARSE ERROR ===');
+                console.error('Error:', parseError.message);
+                console.error('Text that failed to parse:', text.substring(0, 500));
+                console.log('Falling back to hardcoded function');
+                analysis = generateFallbackJobAnalysis(jobTitle, responsibilities, industry, lang);
             }
+        } catch (aiError) {
+            console.error('=== AI GENERATION ERROR ===');
+            console.error('Error message:', aiError.message);
+            console.error('Error stack:', aiError.stack);
+            console.log('Falling back to hardcoded function');
+            analysis = generateFallbackJobAnalysis(jobTitle, responsibilities, industry, lang);
         }
 
         res.json(analysis);
     } catch (error) {
-        console.error('❌ Error in job skills analysis:', error);
-        console.error('❌ AI agent failed - returning error instead of fallback');
-        res.status(500).json({ 
-            error: 'AI agent failed to generate job skills analysis', 
-            message: error.message,
-            details: 'The AI model is not available. Please check your GEMINI_API_KEY and try again.'
-        });
+        console.error('Error in job skills analysis:', error);
+        const { jobTitle, responsibilities, industry, language } = req.body;
+        const lang = language === 'ar' ? 'ar' : 'en';
+        res.json(generateFallbackJobAnalysis(jobTitle, responsibilities, industry, lang));
     }
 });
 
-// Fallback functions (static responses if LLM fails)
-function generateFallbackAnalysis(answers, score, language = 'en') {
-    const isArabic = language === 'ar';
+// National AI Index Maturity Level Determination (based on SDAIA National AI Index)
+function getNAIIMaturityLevel(score) {
+    if (score >= 0 && score < 5) {
+        return { level: 0, name: { en: "Absence of Capabilities", ar: "غياب القدرات" } };
+    } else if (score >= 5 && score < 25) {
+        return { level: 1, name: { en: "Building Phase", ar: "مرحلة البناء" } };
+    } else if (score >= 25 && score < 50) {
+        return { level: 2, name: { en: "Activation Phase", ar: "مرحلة التفعيل" } };
+    } else if (score >= 50 && score < 80) {
+        return { level: 3, name: { en: "Mastery Phase", ar: "مرحلة التمكن" } };
+    } else if (score >= 80 && score < 95) {
+        return { level: 4, name: { en: "Excellence Phase", ar: "مرحلة التميز" } };
+    } else {
+        return { level: 5, name: { en: "Leadership Phase", ar: "مرحلة الريادة" } };
+    }
+}
+
+// Fallback functions (static responses if LLM fails) - aligned with National AI Index
+function generateFallbackAnalysis(answers, score, lang = 'en') {
     const gaps = [];
+    const domainNames = lang === 'ar' ? [
+        "التخطيط الاستراتيجي والأداء",
+        "مبادرات الذكاء الاصطناعي",
+        "تخصيص الميزانية",
+        "الأطر والسياسات",
+        "الامتثال التنظيمي",
+        "توفر البيانات وإمكانية الوصول",
+        "جودة البيانات والتكامل",
+        "البنية التحتية التقنية",
+        "عدد وتنوع مواهب الذكاء الاصطناعي",
+        "التطوير المهني",
+        "تطوير ونشر تطبيقات الذكاء الاصطناعي",
+        "الخصوصية والأمان",
+        "الكفاءة التشغيلية",
+        "جودة الخدمة والتحسين"
+    ] : [
+        "Strategic Planning & Performance",
+        "AI Initiatives",
+        "Budget Allocation",
+        "Frameworks & Policies",
+        "Regulatory Compliance",
+        "Data Availability & Access",
+        "Data Quality & Integration",
+        "Technical Infrastructure",
+        "Number & Diversity of AI Talent",
+        "Professional Development",
+        "AI Application Development & Deployment",
+        "Privacy & Security",
+        "Operational Efficiency",
+        "Service Quality & Improvement"
+    ];
     
-    if (answers[0] < 50) {
-        gaps.push(isArabic 
-            ? "استراتيجية ورؤية الذكاء الاصطناعي: تطوير استراتيجية واضحة للذكاء الاصطناعي تتماشى مع الأهداف التجارية"
-            : "AI Strategy & Vision: Develop a clear AI strategy aligned with business objectives");
+    const pillarNames = lang === 'ar' ? {
+        "Directions": "التوجهات",
+        "Enablers": "الممكنات",
+        "Outputs": "المخرجات"
+    } : {
+        "Directions": "Directions",
+        "Enablers": "Enablers",
+        "Outputs": "Outputs"
+    };
+    
+    const pillarMapping = [
+        { domain: 0, pillar: "Directions" },
+        { domain: 1, pillar: "Directions" },
+        { domain: 2, pillar: "Directions" },
+        { domain: 3, pillar: "Directions" },
+        { domain: 4, pillar: "Directions" },
+        { domain: 5, pillar: "Enablers" },
+        { domain: 6, pillar: "Enablers" },
+        { domain: 7, pillar: "Enablers" },
+        { domain: 8, pillar: "Enablers" },
+        { domain: 9, pillar: "Enablers" },
+        { domain: 10, pillar: "Outputs" },
+        { domain: 11, pillar: "Outputs" },
+        { domain: 12, pillar: "Outputs" },
+        { domain: 13, pillar: "Outputs" }
+    ];
+    
+    // Specific recommendations for each domain
+    const domainRecommendations = lang === 'ar' ? [
+        "تطوير استراتيجية شاملة للذكاء الاصطناعي تتماشى مع رؤية 2030 وإطار المؤشر الوطني للذكاء الاصطناعي",
+        "تحديد وتنفيذ مبادرات ذكاء اصطناعي واضحة تتماشى مع الأولويات الوطنية والأهداف التنظيمية",
+        "تخصيص ميزانية مخصصة للذكاء الاصطناعي (موصى به: 15%+ من ميزانية تكنولوجيا المعلومات)",
+        "إنشاء أطر حوكمة وسياسات شاملة تتماشى مع لوائح الهيئة السعودية للبيانات والذكاء الاصطناعي",
+        "ضمان الامتثال الكامل للوائح الوطنية للذكاء الاصطناعي ومتطلبات الحوكمة",
+        "تحسين توفر البيانات وإمكانية الوصول لتمكين تطبيقات الذكاء الاصطناعي",
+        "رفع جودة البيانات وتكاملها عبر الأنظمة المختلفة لدعم التحليلات المتقدمة",
+        "الاستثمار في البنية التحتية التقنية السحابية القابلة للتوسع وخطوط البيانات",
+        "بناء فريق مواهب متنوع في الذكاء الاصطناعي من خلال التوظيف والشراكات الأكاديمية",
+        "تطوير برامج تدريبية مستمرة للموظفين تتماشى مع المعايير الوطنية للذكاء الاصطناعي",
+        "تطوير ونشر تطبيقات ذكاء اصطناعي عملية لإثبات القيمة والأثر الملموس",
+        "تعزيز إجراءات الخصوصية والأمان لحماية البيانات والأنظمة",
+        "قياس وتحسين الكفاءة التشغيلية من خلال تطبيقات الذكاء الاصطناعي",
+        "تحسين جودة الخدمة باستخدام حلول مدعومة بالذكاء الاصطناعي"
+    ] : [
+        "Develop a comprehensive AI strategy aligned with Vision 2030 and National AI Index framework",
+        "Identify and implement clear AI initiatives aligned with national priorities and organizational goals",
+        "Allocate dedicated budget for AI (recommended: 15%+ of IT budget)",
+        "Establish comprehensive governance frameworks and policies aligned with SDAIA regulations",
+        "Ensure full compliance with national AI regulations and governance requirements",
+        "Improve data availability and accessibility to enable AI applications",
+        "Enhance data quality and integration across different systems to support advanced analytics",
+        "Invest in scalable cloud technical infrastructure and data pipelines",
+        "Build a diverse AI talent team through recruitment and academic partnerships",
+        "Develop continuous training programs for employees aligned with national AI standards",
+        "Develop and deploy practical AI applications to demonstrate value and tangible impact",
+        "Strengthen privacy and security measures to protect data and systems",
+        "Measure and improve operational efficiency through AI applications",
+        "Improve service quality using AI-enabled solutions"
+    ];
+    
+    if (lang === 'ar') {
+        answers.forEach((answerScore, index) => {
+            if (answerScore < 50 && domainNames[index]) {
+                const pillar = pillarMapping.find(p => p.domain === index)?.pillar || "";
+                const pillarName = pillarNames[pillar] || pillar;
+                gaps.push(`${domainNames[index]} (ركن ${pillarName}): ${domainRecommendations[index]}`);
+            }
+        });
+        
+        // Ensure we have at least 5 gaps, fill with general recommendations if needed
+        while (gaps.length < 5) {
+            if (gaps.length === 0) {
+                gaps.push("التخطيط الاستراتيجي والأداء (ركن التوجهات): تطوير استراتيجية شاملة للذكاء الاصطناعي تتماشى مع رؤية 2030 وإطار المؤشر الوطني للذكاء الاصطناعي");
+                gaps.push("أساس البيانات (ركن الممكنات): تحسين جودة البيانات والحوكمة وإمكانية الوصول لدعم مبادرات الذكاء الاصطناعي");
+                gaps.push("المواهب التقنية (ركن الممكنات): بناء أو اكتساب خبرة في الذكاء الاصطناعي/التعلم الآلي من خلال برامج تدريبية تتماشى مع المعايير الوطنية");
+                gaps.push("البنية التحتية (ركن الممكنات): الاستثمار في البنية التحتية السحابية القابلة للتوسع وخطوط البيانات");
+                gaps.push("تطبيقات الذكاء الاصطناعي (ركن المخرجات): تطوير ونشر تطبيقات الذكاء الاصطناعي لإثبات الأثر الملموس");
+            } else {
+                // Add specific recommendations for remaining gaps
+                const remainingDomains = domainNames.filter((_, idx) => !answers.some((score, i) => i === idx && score < 50));
+                if (remainingDomains.length > 0) {
+                    const randomDomain = remainingDomains[Math.floor(Math.random() * remainingDomains.length)];
+                    const domainIndex = domainNames.indexOf(randomDomain);
+                    if (domainIndex >= 0) {
+                        const pillar = pillarMapping.find(p => p.domain === domainIndex)?.pillar || "";
+                        const pillarName = pillarNames[pillar] || pillar;
+                        gaps.push(`${randomDomain} (ركن ${pillarName}): ${domainRecommendations[domainIndex]}`);
+                    } else {
+                        gaps.push("الحوكمة والامتثال (ركن التوجهات): إنشاء أطر حوكمة شاملة تتماشى مع لوائح الهيئة السعودية للبيانات والذكاء الاصطناعي");
+                    }
+                } else {
+                    gaps.push("الحوكمة والامتثال (ركن التوجهات): إنشاء أطر حوكمة شاملة تتماشى مع لوائح الهيئة السعودية للبيانات والذكاء الاصطناعي");
+                }
+            }
+        }
+    } else {
+        answers.forEach((answerScore, index) => {
+            if (answerScore < 50 && domainNames[index]) {
+                const pillar = pillarMapping.find(p => p.domain === index)?.pillar || "";
+                gaps.push(`${domainNames[index]} (${pillar} Pillar): ${domainRecommendations[index]}`);
+            }
+        });
+        
+        // Ensure we have at least 5 gaps, fill with general recommendations if needed
+        while (gaps.length < 5) {
+            if (gaps.length === 0) {
+                gaps.push("Strategic Planning & Performance (Directions Pillar): Develop a comprehensive AI strategy aligned with Vision 2030 and National AI Index framework");
+                gaps.push("Data Foundation (Enablers Pillar): Improve data quality, governance, and accessibility to support AI initiatives");
+                gaps.push("Technical Talent (Enablers Pillar): Build or acquire AI/ML expertise through training programs aligned with national standards");
+                gaps.push("Infrastructure (Enablers Pillar): Invest in scalable cloud infrastructure and data pipelines");
+                gaps.push("AI Applications (Outputs Pillar): Develop and deploy AI applications to demonstrate tangible impact");
+            } else {
+                // Add specific recommendations for remaining gaps
+                const remainingDomains = domainNames.filter((_, idx) => !answers.some((score, i) => i === idx && score < 50));
+                if (remainingDomains.length > 0) {
+                    const randomDomain = remainingDomains[Math.floor(Math.random() * remainingDomains.length)];
+                    const domainIndex = domainNames.indexOf(randomDomain);
+                    if (domainIndex >= 0) {
+                        const pillar = pillarMapping.find(p => p.domain === domainIndex)?.pillar || "";
+                        gaps.push(`${randomDomain} (${pillar} Pillar): ${domainRecommendations[domainIndex]}`);
+                    } else {
+                        gaps.push("Governance & Compliance (Directions Pillar): Establish comprehensive governance frameworks aligned with SDAIA regulations");
+                    }
+                } else {
+                    gaps.push("Governance & Compliance (Directions Pillar): Establish comprehensive governance frameworks aligned with SDAIA regulations");
+                }
+            }
+        }
     }
-    if (answers[1] < 50) {
-        gaps.push(isArabic
-            ? "الأساسيات البيانات: تحسين جودة البيانات والحوكمة وإمكانية الوصول"
-            : "Data Foundation: Improve data quality, governance, and accessibility");
-    }
-    if (answers[2] < 50) {
-        gaps.push(isArabic
-            ? "المواهب التقنية: بناء أو اكتساب خبرة في الذكاء الاصطناعي/التعلم الآلي من خلال التدريب أو التوظيف"
-            : "Technical Talent: Build or acquire AI/ML expertise through training or hiring");
-    }
-    if (answers[3] < 50) {
-        gaps.push(isArabic
-            ? "البنية التحتية: الاستثمار في البنية التحتية السحابية القابلة للتوسع وخطوط البيانات"
-            : "Infrastructure: Invest in scalable cloud infrastructure and data pipelines");
-    }
-    if (answers[4] < 50) {
-        gaps.push(isArabic
-            ? "دعم القيادة: تأمين التزام التنفيذيين وتخصيص الموارد المخصصة"
-            : "Leadership Support: Secure executive commitment and allocate dedicated resources");
-    }
+    
+    const maturityLevel = getNAIIMaturityLevel(score);
+    const nextLevel = maturityLevel.level < 5 ? maturityLevel.level + 1 : 5;
+    
+    // Calculate pillar scores
+    const directionsScore = (answers[0] + answers[1] + answers[2] + answers[3] + answers[4]) / 5;
+    const enablersScore = (answers[5] + answers[6] + answers[7] + answers[8] + answers[9]) / 5;
+    const outputsScore = (answers[10] + answers[11] + answers[12] + answers[13]) / 4;
+    
+    // Identify weakest pillar
+    const pillarScores = [
+        { name: 'Directions', score: directionsScore },
+        { name: 'Enablers', score: enablersScore },
+        { name: 'Outputs', score: outputsScore }
+    ];
+    const weakestPillar = pillarScores.reduce((min, pillar) => pillar.score < min.score ? pillar : min);
+    
+    // Generate dynamic insights based on maturity level and scores
+    const insights = generateDynamicInsights(score, maturityLevel, nextLevel, weakestPillar, answers, lang);
     
     return {
-        priorityGaps: gaps.slice(0, 3),
-        roadmap: getRoadmap(score, language),
-        benchmark: getBenchmark(score, language),
-        insights: isArabic
-            ? "ركز على بناء القدرات الأساسية وتأمين دعم التنفيذيين لتحول مستدام في الذكاء الاصطناعي."
-            : "Focus on building foundational capabilities and securing executive buy-in for sustainable AI transformation."
+        priorityGaps: gaps.slice(0, 5),
+        roadmap: getRoadmap(score, lang),
+        insights: insights
     };
 }
 
-function getRoadmap(score, language = 'en') {
-    const isArabic = language === 'ar';
-    
-    if (score < 30) {
-        return isArabic ? [
-            "ابدأ بورش عمل التوعية بالذكاء الاصطناعي للقيادة",
-            "إجراء تدقيق للبيانات لتقييم الحالة الحالية",
-            "تحديد 2-3 حالات استخدام للذكاء الاصطناعي سريعة الفوز",
-            "بناء فريق تجريبي صغير مع تدريب أساسي على الذكاء الاصطناعي"
-        ] : [
-            "Start with AI awareness workshops for leadership",
-            "Conduct a data audit to assess current state",
-            "Identify 2-3 quick-win AI use cases",
-            "Build a small pilot team with basic AI training"
-        ];
-    } else if (score < 60) {
-        return isArabic ? [
-            "تطوير وثيقة استراتيجية رسمية للذكاء الاصطناعي",
-            "الاستثمار في تحسينات البنية التحتية للبيانات",
-            "إطلاق مشاريع تجريبية للذكاء الاصطناعي في مناطق منخفضة المخاطر",
-            "إنشاء شراكات مع مزودي حلول الذكاء الاصطناعي"
-        ] : [
-            "Develop a formal AI strategy document",
-            "Invest in data infrastructure improvements",
-            "Launch pilot AI projects in low-risk areas",
-            "Establish partnerships with AI solution providers"
-        ];
-    } else {
-        return isArabic ? [
-            "توسيع نطاق التجارب الناجحة عبر المنظمة",
-            "بناء مركز التميز الداخلي للذكاء الاصطناعي",
-            "تطوير قدرات الذكاء الاصطناعي المتقدمة والحلول المخصصة",
-            "التركيز على أخلاقيات الذكاء الاصطناعي وأطر الحوكمة"
-        ] : [
-            "Scale successful pilots across the organization",
-            "Build internal AI center of excellence",
-            "Develop advanced AI capabilities and custom solutions",
-            "Focus on AI ethics and governance frameworks"
-        ];
-    }
-}
-
-function getBenchmark(score, language = 'en') {
-    const isArabic = language === 'ar';
-    
-    if (score < 40) {
-        return { 
-            industryAvg: 45, 
-            topPerformers: 85, 
-            message: isArabic 
-                ? "أنت أقل من متوسط الصناعة. ركز على بناء القدرات الأساسية أولاً."
-                : "You're below industry average. Focus on building foundational capabilities first." 
+// Generate dynamic insights based on assessment results
+function generateDynamicInsights(score, maturityLevel, nextLevel, weakestPillar, answers, lang = 'en') {
+    if (lang === 'ar') {
+        const levelSpecificInsights = {
+            0: `منظمتك في المرحلة الأولية من تبني الذكاء الاصطناعي (المستوى 0: ${maturityLevel.name.ar}). تمثل هذه فرصة حرجة لإنشاء أساس قوي لتحول الذكاء الاصطناعي يتماشى مع رؤية 2030.`,
+            1: `منظمتك في مرحلة البناء (المستوى 1: ${maturityLevel.name.ar})، معترفة بأهمية الذكاء الاصطناعي ولكنها تحتاج إلى نهج منظم للتنفيذ.`,
+            2: `منظمتك قد فعّلت أطر الذكاء الاصطناعي (المستوى 2: ${maturityLevel.name.ar})، مع تطبيقات أولية عبر الإدارات. هذه مرحلة محورية للتوسع.`,
+            3: `منظمتك تظهر التمكن في تكامل الذكاء الاصطناعي (المستوى 3: ${maturityLevel.name.ar})، مع دمج الذكاء الاصطناعي في العمليات واتخاذ القرار.`,
+            4: `منظمتك تحقق التميز في الذكاء الاصطناعي (المستوى 4: ${maturityLevel.name.ar})، تقود التحول الاستراتيجي وتحقق أثراً قابلاً للقياس.`,
+            5: `منظمتك رائدة وطنياً في تبني الذكاء الاصطناعي (المستوى 5: ${maturityLevel.name.ar})، تحدد معايير للابتكار والأثر.`
         };
-    } else if (score < 70) {
-        return { 
-            industryAvg: 55, 
-            topPerformers: 90, 
-            message: isArabic
-                ? "أنت قريب من متوسط الصناعة. سرّع رحلتك في الذكاء الاصطناعي من خلال الاستثمارات الاستراتيجية."
-                : "You're near industry average. Accelerate your AI journey with strategic investments." 
-        };
-    } else {
-        return { 
-            industryAvg: 60, 
-            topPerformers: 95, 
-            message: isArabic
-                ? "أنت أعلى من المتوسط! ركز على التوسع وقدرات الذكاء الاصطناعي المتقدمة."
-                : "You're above average! Focus on scaling and advanced AI capabilities." 
-        };
-    }
-}
-
-function generateFallbackLearningPath(role, experience, goals, timePerWeek, language = 'en') {
-    const isArabic = language === 'ar';
-    // Calculate total weeks - shorter timeline (8-16 weeks instead of 12-24)
-    const totalWeeks = Math.max(8, Math.min(16, Math.ceil(80 / timePerWeek)));
-    
-    // Debug logging
-    console.log('Fallback function called with:', { role, experience, goals, timePerWeek, language });
-    
-    // Determine curriculum based on role, experience level and goals
-    const roleStr = String(role || '').toLowerCase();
-    const experienceStr = String(experience || '').toLowerCase();
-    
-    // Check role for professional indicators
-    const roleIsProfessional = roleStr.includes('professional') || roleStr.includes('محترف') || roleStr.includes('executive') || roleStr.includes('researcher');
-    const roleIsStudent = roleStr.includes('student') || roleStr.includes('طالب');
-    
-    // Check experience level
-    const isBeginner = experienceStr === 'beginner' || experienceStr.includes('مبتدئ');
-    const isIntermediate = experienceStr === 'intermediate' || experienceStr.includes('متوسط');
-    const isAdvanced = experienceStr === 'advanced' || experienceStr.includes('متقدم');
-    
-    // Professional if role is professional OR experience is advanced/intermediate
-    const isProfessional = roleIsProfessional || isAdvanced || (isIntermediate && !roleIsStudent);
-    
-    console.log('Detection:', { roleStr, experienceStr, roleIsProfessional, roleIsStudent, isBeginner, isIntermediate, isAdvanced, isProfessional });
-    
-    // Comprehensive goal analysis - check for specific topics mentioned
-    const goalsStr = String(goals || '').toLowerCase();
-    const goalsStrAr = String(goals || ''); // Keep original for Arabic detection
-    
-    // Topic detection - be very specific
-    const mentionsAgentic = goalsStr.includes('agentic') || goalsStr.includes('agent') || goalsStrAr.includes('أجنتيك') || goalsStrAr.includes('وكيل') || goalsStr.includes('autonomous');
-    const mentionsNLP = goalsStr.includes('nlp') || goalsStr.includes('natural language') || goalsStr.includes('language processing') || goalsStrAr.includes('معالجة لغة') || goalsStr.includes('llm') || goalsStr.includes('transformer') || goalsStr.includes('bert') || goalsStr.includes('gpt');
-    const mentionsCV = goalsStr.includes('vision') || goalsStr.includes('computer vision') || goalsStrAr.includes('رؤية') || goalsStr.includes('image') || goalsStr.includes('object detection') || goalsStr.includes('segmentation');
-    const mentionsML = goalsStr.includes('machine learning') || goalsStrAr.includes('تعلم آلي') || goalsStr.includes('ml ') || goalsStr.includes(' ml');
-    const mentionsRL = goalsStr.includes('reinforcement') || goalsStr.includes('rl ') || goalsStrAr.includes('تعزيز');
-    const mentionsRobotics = goalsStr.includes('robot') || goalsStrAr.includes('روبوت');
-    const mentionsData = goalsStr.includes('data science') || goalsStr.includes('data engineering') || goalsStrAr.includes('بيانات') || goalsStr.includes('analytics');
-    const mentionsMLOps = goalsStr.includes('mlops') || goalsStr.includes('deployment') || goalsStr.includes('production') || goalsStr.includes('pipeline');
-    const mentionsGenAI = goalsStr.includes('generative') || goalsStr.includes('gen ai') || goalsStr.includes('gpt') || goalsStr.includes('chatgpt') || goalsStrAr.includes('توليدي');
-    
-    console.log('Goals detection:', { 
-        goalsStr: goalsStr.substring(0, 100), 
-        mentionsAgentic, mentionsNLP, mentionsCV, mentionsML, mentionsRL, 
-        mentionsRobotics, mentionsData, mentionsMLOps, mentionsGenAI 
-    });
-    
-    if (isArabic) {
-        // Build curriculum based on experience and goals
-        let curriculum = [];
         
-        if (isBeginner || !isProfessional) {
-            // Beginner path
-            curriculum = [
-                { topic: "أساسيات الذكاء الاصطناعي", focus: "فهم المفاهيم الأساسية للذكاء الاصطناعي والتعلم الآلي", resources: "Coursera - Machine Learning by Andrew Ng - https://www.coursera.org/learn/machine-learning، كتاب Hands-On Machine Learning - https://www.oreilly.com/library/view/hands-on-machine-learning/9781492032632/", duration: "4-6 أسابيع" },
-                { topic: "البرمجة للذكاء الاصطناعي", focus: "Python، NumPy، Pandas، Scikit-learn", resources: "Python for Data Science - IBM - https://www.coursera.org/learn/python-for-applied-data-science-ai، Kaggle Learn - https://www.kaggle.com/learn", duration: "3-4 أسابيع" },
-                { topic: "التعلم العميق", focus: "الشبكات العصبية، TensorFlow، PyTorch", resources: "Deep Learning Specialization - https://www.coursera.org/specializations/deep-learning، Fast.ai Practical Deep Learning - https://course.fast.ai/، PyTorch Tutorials - https://pytorch.org/tutorials/", duration: "6-8 أسابيع" }
+        const pillarFocus = {
+            'Directions': 'ركز على تطوير استراتيجيات شاملة للذكاء الاصطناعي، وضمان التزام القيادة، وإنشاء أطر حوكمة تتماشى مع لوائح الهيئة السعودية للبيانات والذكاء الاصطناعي.',
+            'Enablers': 'أولوية بناء البنية التحتية للبيانات، وتحسين جودة البيانات وإمكانية الوصول، وتطوير القدرات التقنية، والاستثمار في تطوير المواهب البشرية.',
+            'Outputs': 'ركز على تطوير ونشر تطبيقات الذكاء الاصطناعي، وقياس مكاسب الكفاءة التشغيلية، وتحسين جودة الخدمة من خلال حلول مدعومة بالذكاء الاصطناعي.'
+        };
+        
+        const pillarNames = {
+            'Directions': 'التوجهات',
+            'Enablers': 'الممكنات',
+            'Outputs': 'المخرجات'
+        };
+        
+        const nextLevelGoals = {
+            1: 'إنشاء الوعي الأساسي وبدء المشاريع التجريبية',
+            2: 'تفعيل أطر الحوكمة وتوسيع التطبيقات الإدارية',
+            3: 'تحقيق التكامل التنظيمي الشامل',
+            4: 'قيادة التحول الاستراتيجي وتعظيم خلق القيمة',
+            5: 'الحفاظ على الريادة الوطنية ودفع الابتكار المستمر'
+        };
+        
+        const levelInsight = levelSpecificInsights[maturityLevel.level];
+        const pillarAdvice = pillarFocus[weakestPillar.name] || '';
+        const nextGoal = nextLevelGoals[nextLevel] || 'مواصلة التقدم';
+        const weakestPillarName = pillarNames[weakestPillar.name] || weakestPillar.name;
+        
+        // Identify specific low-scoring areas
+        const lowScores = [];
+        const domainNames = [
+            'التخطيط الاستراتيجي', 'مبادرات الذكاء الاصطناعي', 'الميزانية', 'الأطر', 'الامتثال',
+            'توفر البيانات', 'جودة البيانات', 'البنية التحتية', 'المواهب', 'التطوير',
+            'التطبيقات', 'الأمان', 'الكفاءة', 'جودة الخدمة'
+        ];
+        answers.forEach((ans, idx) => {
+            if (ans < 40 && domainNames[idx]) {
+                lowScores.push(domainNames[idx]);
+            }
+        });
+        
+        const specificAreas = lowScores.length > 0 
+            ? `المجالات التي تتطلب اهتماماً فورياً تشمل: ${lowScores.join('، ')}.`
+            : 'جميع المجالات الأساسية تتطلب تحسيناً متوازناً.';
+        
+        // Add score-specific context
+        const scoreContext = score < 25 
+            ? `بدرجة استعداد ${score}/100، منظمتك في المراحل المبكرة من تبني الذكاء الاصطناعي.`
+            : score < 50
+            ? `بدرجة استعداد ${score}/100، منظمتك لديها عناصر أساسية في مكانها ولكنها تحتاج إلى تسريع استراتيجي.`
+            : score < 80
+            ? `بدرجة استعداد ${score}/100، منظمتك تظهر قدرات قوية في الذكاء الاصطناعي مع مجال للتحسين.`
+            : `بدرجة استعداد ${score}/100، منظمتك تقترب من التميز في نضج الذكاء الاصطناعي.`;
+        
+        // Calculate pillar scores from answers
+        const directionsScore = (answers[0] + answers[1] + answers[2] + answers[3] + answers[4]) / 5;
+        const enablersScore = (answers[5] + answers[6] + answers[7] + answers[8] + answers[9]) / 5;
+        const outputsScore = (answers[10] + answers[11] + answers[12] + answers[13]) / 4;
+        
+        // Calculate specific pillar performance
+        const directionsAvg = Math.round(directionsScore);
+        const enablersAvg = Math.round(enablersScore);
+        const outputsAvg = Math.round(outputsScore);
+        
+        const pillarAnalysis = `الأداء عبر أركان المؤشر الوطني للذكاء الاصطناعي الثلاثة يظهر: التوجهات عند ${directionsAvg}/100، الممكنات عند ${enablersAvg}/100، والمخرجات عند ${outputsAvg}/100.`;
+        
+        // Specific recommendations based on actual scores
+        const budgetRecommendation = answers[2] < 30 
+            ? `حرج: تخصيص الميزانية منخفض بشكل حرج (${answers[2]}/100). إجراء فوري مطلوب لتأمين ما لا يقل عن 10% من ميزانية تكنولوجيا المعلومات لمبادرات الذكاء الاصطناعي.`
+            : answers[2] < 60
+            ? `تخصيص الميزانية معتدل (${answers[2]}/100). فكر في الزيادة إلى 15%+ من ميزانية تكنولوجيا المعلومات لتسريع تحول الذكاء الاصطناعي.`
+            : `تخصيص الميزانية قوي (${answers[2]}/100)، يوفر أساساً جيداً لمبادرات الذكاء الاصطناعي.`;
+        
+        const infrastructureRecommendation = answers[7] < 40
+            ? `البنية التحتية تتطلب استثماراً كبيراً (النتيجة: ${answers[7]}/100). أولوية الهجرة السحابية وتطوير خطوط البيانات.`
+            : answers[7] < 70
+            ? `البنية التحتية قيد التطوير (النتيجة: ${answers[7]}/100). ركز على قابلية التوسع والتكامل مع المنصات الوطنية.`
+            : `البنية التحتية قوية (النتيجة: ${answers[7]}/100)، تمكن تطبيقات الذكاء الاصطناعي المتقدمة.`;
+        
+        const talentRecommendation = answers[8] < 30
+            ? `فجوة المواهب حرجة (النتيجة: ${answers[8]}/100). حاجة ملحة لتوظيف أو تدريب متخصصي الذكاء الاصطناعي. فكر في شراكات مع الجامعات.`
+            : answers[8] < 60
+            ? `تطوير المواهب قيد التقدم (النتيجة: ${answers[8]}/100). وسع برامج التدريب وأنشئ مسارات وظيفية واضحة.`
+            : `قدرات المواهب قوية (النتيجة: ${answers[8]}/100). ركز على الاحتفاظ وتطوير المهارات المتقدمة.`;
+        
+        return `${scoreContext} ${levelInsight}
+
+${pillarAnalysis} الركن الأضعف أداءً هو ${weakestPillarName} (النتيجة: ${Math.round(weakestPillar.score)}/100)، والذي يتطلب اهتماماً مركزاً. ${pillarAdvice}
+
+${specificAreas}
+
+${budgetRecommendation} ${infrastructureRecommendation} ${talentRecommendation}
+
+للانتقال إلى المستوى ${nextLevel}، يجب على منظمتك ${nextGoal}. المواءمة مع رؤية 2030 تتطلب دمج تحول الذكاء الاصطناعي كأولوية استراتيجية، وضمان أن مبادرات الذكاء الاصطناعي تساهم مباشرة في الأهداف الوطنية. فكر في إنشاء شراكات مع المؤسسات الأكاديمية، والاستثمار في التطوير المهني المستمر يتماشى مع معايير الذكاء الاصطناعي الوطنية، وتنفيذ أطر قياس قوية لتتبع التقدم مقابل مؤشرات المؤشر الوطني للذكاء الاصطناعي.
+
+المخاطر الرئيسية تشمل عدم كفاية التزام القيادة (${answers[2] < 50 ? 'حالياً مصدر قلق - النتيجة: ' + answers[2] + '/100' : 'تم معالجته بشكل كافٍ - النتيجة: ' + answers[2] + '/100'})، فجوات البنية التحتية للبيانات (${answers[7] < 50 ? 'يحتاج تحسين - النتيجة: ' + answers[7] + '/100' : 'كافٍ - النتيجة: ' + answers[7] + '/100'})، ونقص المهارات (${answers[8] < 50 ? 'فجوة حرجة محددة - النتيجة: ' + answers[8] + '/100' : 'قيد الإدارة - النتيجة: ' + answers[8] + '/100'}). يجب أن تشمل استراتيجيات التخفيف تأمين تخصيص ميزانية مخصصة (الحالي: ${answers[2]}% مكافئ، موصى به >15% من ميزانية تكنولوجيا المعلومات)، وبناء أطر حوكمة البيانات، وإنشاء مسارات وظيفية واضحة للاحتفاظ بمواهب الذكاء الاصطناعي.`;
+    } else {
+        const levelSpecificInsights = {
+            0: `Your organization is at the initial stage of AI adoption (Level 0: ${maturityLevel.name.en}). This represents a critical opportunity to establish a strong foundation for AI transformation aligned with Vision 2030.`,
+            1: `Your organization is in the Building Phase (Level 1: ${maturityLevel.name.en}), recognizing the importance of AI but requiring structured approach to implementation.`,
+            2: `Your organization has activated AI frameworks (Level 2: ${maturityLevel.name.en}), with initial applications across departments. This is a pivotal stage for scaling.`,
+            3: `Your organization demonstrates mastery in AI integration (Level 3: ${maturityLevel.name.en}), with AI embedded in operations and decision-making.`,
+            4: `Your organization is achieving excellence in AI (Level 4: ${maturityLevel.name.en}), leading strategic transformation and delivering measurable impact.`,
+            5: `Your organization is a national leader in AI adoption (Level 5: ${maturityLevel.name.en}), setting benchmarks for innovation and impact.`
+        };
+        
+        const pillarFocus = {
+            'Directions': 'Focus on developing comprehensive AI strategies, securing executive commitment, and establishing governance frameworks aligned with SDAIA regulations.',
+            'Enablers': 'Prioritize building data infrastructure, improving data quality and accessibility, developing technical capabilities, and investing in human talent development.',
+            'Outputs': 'Emphasize developing and deploying AI applications, measuring operational efficiency gains, and improving service quality through AI-enabled solutions.'
+        };
+        
+        const nextLevelGoals = {
+            1: 'establish foundational awareness and begin pilot projects',
+            2: 'activate governance frameworks and expand departmental applications',
+            3: 'achieve comprehensive organizational integration',
+            4: 'lead strategic transformation and maximize value creation',
+            5: 'maintain national leadership and drive continuous innovation'
+        };
+        
+        const levelInsight = levelSpecificInsights[maturityLevel.level];
+        const pillarAdvice = pillarFocus[weakestPillar.name] || '';
+        const nextGoal = nextLevelGoals[nextLevel] || 'continue advancing';
+        
+        // Identify specific low-scoring areas
+        const lowScores = [];
+        const domainNames = [
+            'Strategic Planning', 'AI Initiatives', 'Budget', 'Frameworks', 'Compliance',
+            'Data Availability', 'Data Quality', 'Infrastructure', 'Talent', 'Development',
+            'Applications', 'Security', 'Efficiency', 'Service Quality'
+        ];
+        answers.forEach((ans, idx) => {
+            if (ans < 40 && domainNames[idx]) {
+                lowScores.push(domainNames[idx]);
+            }
+        });
+        
+        const specificAreas = lowScores.length > 0 
+            ? `Areas requiring immediate attention include: ${lowScores.join(', ')}.`
+            : 'All core areas require balanced improvement.';
+        
+        // Add score-specific context
+        const scoreContext = score < 25 
+            ? `With a readiness score of ${score}/100, your organization is in the early stages of AI adoption.`
+            : score < 50
+            ? `With a readiness score of ${score}/100, your organization has foundational elements in place but needs strategic acceleration.`
+            : score < 80
+            ? `With a readiness score of ${score}/100, your organization demonstrates solid AI capabilities with room for optimization.`
+            : `With a readiness score of ${score}/100, your organization is approaching excellence in AI maturity.`;
+        
+        // Calculate pillar scores from answers
+        const directionsScore = (answers[0] + answers[1] + answers[2] + answers[3] + answers[4]) / 5;
+        const enablersScore = (answers[5] + answers[6] + answers[7] + answers[8] + answers[9]) / 5;
+        const outputsScore = (answers[10] + answers[11] + answers[12] + answers[13]) / 4;
+        
+        // Calculate specific pillar performance
+        const directionsAvg = Math.round(directionsScore);
+        const enablersAvg = Math.round(enablersScore);
+        const outputsAvg = Math.round(outputsScore);
+        
+        const pillarAnalysis = `Performance across the three National AI Index pillars shows: Directions at ${directionsAvg}/100, Enablers at ${enablersAvg}/100, and Outputs at ${outputsAvg}/100.`;
+        
+        // Specific recommendations based on actual scores
+        const budgetRecommendation = answers[2] < 30 
+            ? `Critical: Budget allocation is critically low (${answers[2]}/100). Immediate action required to secure at least 10% of IT budget for AI initiatives.`
+            : answers[2] < 60
+            ? `Budget allocation is moderate (${answers[2]}/100). Consider increasing to 15%+ of IT budget to accelerate AI transformation.`
+            : `Budget allocation is strong (${answers[2]}/100), providing good foundation for AI initiatives.`;
+        
+        const infrastructureRecommendation = answers[7] < 40
+            ? `Infrastructure requires significant investment (score: ${answers[7]}/100). Prioritize cloud migration and data pipeline development.`
+            : answers[7] < 70
+            ? `Infrastructure is developing (score: ${answers[7]}/100). Focus on scalability and integration with national platforms.`
+            : `Infrastructure is robust (score: ${answers[7]}/100), enabling advanced AI applications.`;
+        
+        const talentRecommendation = answers[8] < 30
+            ? `Talent gap is critical (score: ${answers[8]}/100). Urgent need to recruit or train AI specialists. Consider partnerships with universities.`
+            : answers[8] < 60
+            ? `Talent development is progressing (score: ${answers[8]}/100). Expand training programs and create clear career paths.`
+            : `Talent capabilities are strong (score: ${answers[8]}/100). Focus on retention and advanced skill development.`;
+        
+        return `${scoreContext} ${levelInsight}
+
+${pillarAnalysis} The weakest performing pillar is ${weakestPillar.name} (score: ${Math.round(weakestPillar.score)}/100), which requires focused attention. ${pillarAdvice}
+
+${specificAreas}
+
+${budgetRecommendation} ${infrastructureRecommendation} ${talentRecommendation}
+
+To progress to Level ${nextLevel}, your organization should ${nextGoal}. Alignment with Vision 2030 requires integrating AI transformation as a strategic priority, ensuring that AI initiatives contribute directly to national objectives. Consider establishing partnerships with academic institutions, investing in continuous professional development aligned with national AI standards, and implementing robust measurement frameworks to track progress against National AI Index indicators.
+
+Key risks include insufficient executive commitment (${answers[2] < 50 ? 'currently a concern - score: ' + answers[2] + '/100' : 'adequately addressed - score: ' + answers[2] + '/100'}), data infrastructure gaps (${answers[7] < 50 ? 'needs improvement - score: ' + answers[7] + '/100' : 'sufficient - score: ' + answers[7] + '/100'}), and skills shortages (${answers[8] < 50 ? 'critical gap identified - score: ' + answers[8] + '/100' : 'being managed - score: ' + answers[8] + '/100'}). Mitigation strategies should include securing dedicated budget allocation (current: ${answers[2]}% equivalent, recommended >15% of IT budget), building data governance frameworks, and creating clear career pathways for AI talent retention.`;
+    }
+}
+
+function getRoadmap(score, lang = 'en') {
+    if (lang === 'ar') {
+        if (score < 5) {
+            return [
+                "بدء ورش عمل التوعية بالذكاء الاصطناعي للقيادة تتماشى مع رؤية 2030",
+                "إجراء تدقيق للبيانات لتقييم الحالة الحالية",
+                "تحديد 2-3 حالات استخدام للذكاء الاصطناعي سريعة الفوز تتماشى مع الأولويات الوطنية",
+                "بناء فريق تجريبي صغير مع تدريب أساسي على الذكاء الاصطناعي"
             ];
-        } else if (isProfessional || isAdvanced) {
-            // Professional/Advanced path - skip basics
-            curriculum = [
-                { topic: "التعلم العميق المتقدم", focus: "Architectures متقدمة، Transfer Learning، Fine-tuning", resources: "Advanced Deep Learning - https://www.coursera.org/specializations/deep-learning، Papers with Code - https://paperswithcode.com/", duration: "4-6 أسابيع" }
+        } else if (score < 25) {
+            return [
+                "تطوير استراتيجية رسمية للذكاء الاصطناعي تتماشى مع رؤية 2030 وإطار المؤشر الوطني للذكاء الاصطناعي",
+                "تحديد أولويات الذكاء الاصطناعي الوطنية ومواءمة المبادرات",
+                "إنشاء هيكل تنظيمي أساسي لحوكمة الذكاء الاصطناعي",
+                "إطلاق مشاريع تجريبية محدودة مع قياس واضح"
             ];
-            
-            // Only add topics that are actually mentioned in goals - don't default to agentic AI
-            if (mentionsAgentic) {
-                curriculum.push({ topic: "الذكاء الاصطناعي الوكيل (Agentic AI)", focus: "AI Agents، Multi-Agent Systems، Tool Use، Planning", resources: "LangChain Agents - https://python.langchain.com/docs/modules/agents/, AutoGPT - https://github.com/Significant-Gravitas/AutoGPT, Agentic AI Research Papers - https://arxiv.org/search/?query=agentic+ai", duration: "6-8 أسابيع" });
-            }
-            if (mentionsNLP) {
-                curriculum.push({ topic: "معالجة اللغة الطبيعية المتقدمة", focus: "Transformers، LLMs، Fine-tuning، RAG", resources: "NLP Specialization - https://www.coursera.org/specializations/natural-language-processing، Hugging Face NLP Course - https://huggingface.co/learn/nlp-course", duration: "4-6 أسابيع" });
-            }
-            if (mentionsCV) {
-                curriculum.push({ topic: "رؤية الحاسوب المتقدمة", focus: "Object Detection، Segmentation، Vision Transformers", resources: "CS231n Stanford - http://cs231n.stanford.edu/، Fast.ai Computer Vision - https://course.fast.ai/", duration: "4-6 أسابيع" });
-            }
-            // If no specific topic mentioned, create a custom topic based on the actual goals
-            if (!mentionsAgentic && !mentionsNLP && !mentionsCV && !mentionsRL && !mentionsRobotics && !mentionsMLOps && !mentionsData && !mentionsML) {
-                // Use the actual goals to create a personalized topic
-                const goalWords = goalsStr.split(/\s+/).filter(w => w.length > 2);
-                let customTopic = "تطبيقات الذكاء الاصطناعي المتقدمة";
-                let customFocus = "Advanced AI applications، Real-world projects";
-                
-                // Detect business-related goals
-                if (goalsStr.includes('business') || goalsStr.includes('commercial') || goalsStr.includes('enterprise') || goalsStr.includes('عمل') || goalsStr.includes('تجاري')) {
-                    customTopic = "الذكاء الاصطناعي في الأعمال";
-                    customFocus = `تطبيق الذكاء الاصطناعي في الأعمال: ${goals.substring(0, 80)}...`;
-                } else if (goalsStr.length > 10) {
-                    // Use the goals text directly
-                    customTopic = `مسار تعلم مخصص: ${goals.substring(0, 40)}`;
-                    customFocus = `التركيز على: ${goals.substring(0, 100)}...`;
-                }
-                
-                curriculum.push({ 
-                    topic: customTopic, 
-                    focus: customFocus, 
-                    resources: "Papers with Code - https://paperswithcode.com/, GitHub AI Projects - https://github.com/topics/artificial-intelligence, Coursera AI for Business - https://www.coursera.org/courses?query=ai%20business", 
-                    duration: "6-8 أسابيع" 
-                });
-            } else if (!mentionsAgentic && !mentionsNLP && !mentionsCV) {
-                // Some keywords detected but not the main ones
-                if (goalsStr.includes('ml') || goalsStr.includes('machine learning') || goalsStr.includes('تعلم آلي')) {
-                    curriculum.push({ topic: "التعلم الآلي المتقدم", focus: "Advanced ML algorithms، MLOps، Production systems", resources: "MLOps Specialization - https://www.coursera.org/specializations/mlops, Fast.ai - https://course.fast.ai/", duration: "4-6 أسابيع" });
-                } else if (goalsStr.includes('data') || goalsStr.includes('بيانات')) {
-                    curriculum.push({ topic: "علوم البيانات المتقدمة", focus: "Data Engineering، Big Data، Analytics", resources: "Data Engineering Specialization - https://www.coursera.org/specializations/data-engineering, Databricks Academy - https://www.databricks.com/learn", duration: "4-6 أسابيع" });
-                }
-            }
+        } else if (score < 50) {
+            return [
+                "تفعيل الأطر التنظيمية وآليات الحوكمة وفق معايير المؤشر الوطني للذكاء الاصطناعي",
+                "تحسين البنية التحتية للبيانات والتكامل",
+                "إطلاق مشاريع تجريبية عبر عدة إدارات",
+                "تطوير ممارسات قياس الأداء تتماشى مع المؤشر الوطني للذكاء الاصطناعي"
+            ];
+        } else if (score < 80) {
+            return [
+                "دمج الذكاء الاصطناعي في العمليات وعمليات اتخاذ القرار",
+                "تكامل الاستراتيجية والبنية التحتية والمهارات بناءً على أركان المؤشر الوطني للذكاء الاصطناعي",
+                "تطوير مؤشرات الأداء المتقدمة والحوكمة",
+                "تحقيق التكامل الشامل على المستوى التنظيمي"
+            ];
+        } else if (score < 95) {
+            return [
+                "قيادة التحول الاستراتيجي بالذكاء الاصطناعي تتماشى مع الأهداف الوطنية",
+                "تمكين الخدمات الرقمية المتقدمة مع أثر قابل للقياس",
+                "تحقيق أثر ملموس وقابل للقياس يتجاوز تحسين 20%",
+                "توسيع المبادرات وتقييمها بشكل دوري وفق إطار المؤشر الوطني للذكاء الاصطناعي"
+            ];
         } else {
-            // Intermediate path
-            curriculum = [
-                { topic: "التعلم العميق", focus: "الشبكات العصبية، TensorFlow، PyTorch", resources: "Deep Learning Specialization - https://www.coursera.org/specializations/deep-learning، Fast.ai Practical Deep Learning - https://course.fast.ai/", duration: "6-8 أسابيع" }
+            return [
+                "تحقيق الريادة الوطنية في تبني الذكاء الاصطناعي",
+                "دفع الابتكار المستمر والتطوير المتقدم",
+                "تحقيق أثر قابل للقياس على المستوى الوطني",
+                "المساهمة في تطوير المعايير والممارسات الوطنية"
             ];
         }
-        
-        curriculum.push({ topic: "مشاريع عملية", focus: "بناء محفظة مشاريع على GitHub", resources: "Kaggle Competitions - https://www.kaggle.com/competitions، GitHub - https://github.com/، Papers with Code - https://paperswithcode.com/", duration: "مستمر" });
-        
-    return {
-            curriculum: curriculum,
-            timeline: (() => {
-                const timelineItems = [];
-                let weekNum = 1;
-                
-                // Add weeks based on curriculum
-                curriculum.forEach((item, idx) => {
-                    const weeksForTopic = idx === curriculum.length - 1 ? Math.max(1, totalWeeks - weekNum + 1) : Math.max(2, Math.floor(totalWeeks / curriculum.length));
-                    
-                    for (let w = 0; w < weeksForTopic && weekNum <= totalWeeks; w++) {
-                        timelineItems.push({
-                            week: weekNum,
-                            topics: [item.topic],
-                            description: `${item.focus} - ${goals || 'تعلم متقدم'}`,
-                            projects: weekNum > Math.floor(totalWeeks * 0.6) ? "مشروع عملي" : "تمارين",
-                            hours: timePerWeek
-                        });
-                        weekNum++;
-                    }
-                });
-                
-                return timelineItems;
-            })(),
-            milestones: (() => {
-                const milestones = [];
-                if (isBeginner) {
-                    milestones.push("إكمال أساسيات الذكاء الاصطناعي", "إتقان Python و NumPy", "بناء أول نموذج تعلم آلي");
-                }
-                if (mentionsAgentic) {
-                    milestones.push("فهم مفاهيم AI Agents", "بناء أول Agent بسيط", "إكمال مشروع Multi-Agent System");
-                } else if (mentionsNLP) {
-                    milestones.push("إكمال دورة NLP", "بناء مشروع NLP", "Fine-tuning أول نموذج LLM");
-                } else if (mentionsCV) {
-                    milestones.push("إكمال دورة رؤية الحاسوب", "بناء مشروع Object Detection", "بناء مشروع Image Segmentation");
-                } else if (isProfessional || isAdvanced) {
-                    milestones.push("إكمال دورة التعلم العميق المتقدم", "بناء مشروع متقدم", "إتقان Transfer Learning");
-                } else {
-                    milestones.push("إكمال دورة التعلم العميق", "بناء أول مشروع", "إتقان أساسيات ML");
-                }
-                milestones.push("إكمال 3 مشاريع على Kaggle", "بناء محفظة GitHub", "الحصول على شهادة");
-                // Only add "Job ready" milestone for students
-                if (roleIsStudent) {
-                    milestones.push("الاستعداد للوظيفة");
-                }
-                return milestones;
-            })(),
-            careerPaths: (() => {
-                const paths = [];
-                if (mentionsAgentic) {
-                    paths.push({ 
-                        title: "مهندس Agentic AI", 
-                        description: "تطوير أنظمة AI Agents متقدمة للإنتاج", 
-                        skills: ["Python", "LangChain", "Multi-Agent Systems", "Tool Use"], 
-                        steps: ["تعلم LangChain", "بناء Agents", "تعلم Multi-Agent Systems", "مشاريع إنتاجية"] 
-                    });
-                }
-                if (mentionsNLP) {
-                    paths.push({ 
-                        title: "مهندس NLP", 
-                        description: "تطوير تطبيقات معالجة اللغة الطبيعية", 
-                        skills: ["Transformers", "LLMs", "Fine-tuning", "RAG"], 
-                        steps: ["تعلم Transformers", "Fine-tuning نماذج", "بناء تطبيقات RAG"] 
-                    });
-                }
-                if (mentionsCV) {
-                    paths.push({ 
-                        title: "مهندس رؤية حاسوب", 
-                        description: "تطوير تطبيقات رؤية الحاسوب", 
-                        skills: ["CNNs", "Object Detection", "Vision Transformers"], 
-                        steps: ["تعلم CNNs", "بناء مشاريع Detection", "تعلم Vision Transformers"] 
-                    });
-                }
-                if (isProfessional || isAdvanced) {
-                    paths.push({ 
-                        title: "مهندس تعلم آلي متقدم", 
-                        description: "تطوير نماذج ML متقدمة للإنتاج", 
-                        skills: ["Advanced ML", "MLOps", "Production Systems"], 
-                        steps: ["تعلم ML متقدم", "بناء مشاريع", "تعلم MLOps"] 
-                    });
-                }
-                if (paths.length === 0) {
-                    paths.push(
-                        { title: "مهندس تعلم آلي", description: "تطوير نماذج ML للإنتاج", skills: ["Python", "ML", "MLOps"], steps: ["تعلم ML", "بناء مشاريع", "تعلم MLOps"] },
-                        { title: "باحث في الذكاء الاصطناعي", description: "البحث والتطوير في الذكاء الاصطناعي", skills: ["Math", "Research", "Papers"], steps: ["تعلم متقدم", "قراءة أوراق", "بحث"] }
-                    );
-                }
-                return paths;
-            })()
-        };
     } else {
-        // Build curriculum based on experience and goals
-        let curriculum = [];
-        
-        if (isBeginner || !isProfessional) {
-            // Beginner path
-            curriculum = [
-                { topic: "AI Fundamentals", focus: "Understanding core AI and ML concepts", resources: "Coursera - Machine Learning by Andrew Ng - https://www.coursera.org/learn/machine-learning, Hands-On Machine Learning book - https://www.oreilly.com/library/view/hands-on-machine-learning/9781492032632/", duration: "4-6 weeks" },
-                { topic: "Programming for AI", focus: "Python, NumPy, Pandas, Scikit-learn", resources: "Python for Data Science - IBM - https://www.coursera.org/learn/python-for-applied-data-science-ai, Kaggle Learn - https://www.kaggle.com/learn", duration: "3-4 weeks" },
-                { topic: "Deep Learning", focus: "Neural Networks, TensorFlow, PyTorch", resources: "Deep Learning Specialization - https://www.coursera.org/specializations/deep-learning, Fast.ai Practical Deep Learning - https://course.fast.ai/, PyTorch Tutorials - https://pytorch.org/tutorials/", duration: "6-8 weeks" }
+        if (score < 5) {
+            return [
+                "Start with AI awareness workshops for leadership aligned with Vision 2030",
+                "Conduct a data audit to assess current state",
+                "Identify 2-3 quick-win AI use cases aligned with national priorities",
+                "Build a small pilot team with basic AI training"
             ];
-        } else if (isProfessional || isAdvanced) {
-            // Professional/Advanced path - skip basics
-            curriculum = [
-                { topic: "Advanced Deep Learning", focus: "Advanced architectures, Transfer Learning, Fine-tuning", resources: "Advanced Deep Learning - https://www.coursera.org/specializations/deep-learning, Papers with Code - https://paperswithcode.com/", duration: "4-6 weeks" }
+        } else if (score < 25) {
+            return [
+                "Develop a formal AI strategy aligned with Vision 2030 and NAII framework",
+                "Identify national AI priorities and align initiatives",
+                "Establish basic organizational structure for AI governance",
+                "Launch limited pilot projects with clear measurement"
             ];
-            
-            // Add topics based on what's ACTUALLY mentioned in goals - be very specific
-            if (mentionsAgentic) {
-                curriculum.push({ topic: "Agentic AI", focus: "AI Agents, Multi-Agent Systems, Tool Use, Planning, ReAct Pattern", resources: "LangChain Agents - https://python.langchain.com/docs/modules/agents/, AutoGPT - https://github.com/Significant-Gravitas/AutoGPT, Agentic AI Research Papers - https://arxiv.org/search/?query=agentic+ai, ReAct Paper - https://arxiv.org/abs/2210.03629", duration: "6-8 weeks" });
-            }
-            if (mentionsNLP || mentionsGenAI) {
-                curriculum.push({ topic: "Natural Language Processing & Generative AI", focus: "Transformers, LLMs, Fine-tuning, RAG, Prompt Engineering", resources: "NLP Specialization - https://www.coursera.org/specializations/natural-language-processing, Hugging Face NLP Course - https://huggingface.co/learn/nlp-course, OpenAI API Docs - https://platform.openai.com/docs", duration: "6-8 weeks" });
-            }
-            if (mentionsCV) {
-                curriculum.push({ topic: "Advanced Computer Vision", focus: "Object Detection, Segmentation, Vision Transformers, YOLO, R-CNN", resources: "CS231n Stanford - http://cs231n.stanford.edu/, Fast.ai Computer Vision - https://course.fast.ai/, YOLO Tutorial - https://github.com/ultralytics/yolov5", duration: "6-8 weeks" });
-            }
-            if (mentionsRL) {
-                curriculum.push({ topic: "Reinforcement Learning", focus: "Q-Learning, Deep Q-Networks, Policy Gradients, PPO", resources: "Reinforcement Learning Specialization - https://www.coursera.org/specializations/reinforcement-learning, Spinning Up in Deep RL - https://spinningup.openai.com/", duration: "6-8 weeks" });
-            }
-            if (mentionsRobotics) {
-                curriculum.push({ topic: "AI in Robotics", focus: "Robot Control, SLAM, Motion Planning, ROS", resources: "ROS Tutorials - https://wiki.ros.org/, Robotics Specialization - https://www.coursera.org/specializations/robotics", duration: "6-8 weeks" });
-            }
-            if (mentionsMLOps) {
-                curriculum.push({ topic: "MLOps and Model Deployment", focus: "Model Deployment, CI/CD, Monitoring, Kubernetes, Docker", resources: "MLOps Specialization - https://www.coursera.org/specializations/mlops, MLflow - https://mlflow.org/, Kubeflow - https://www.kubeflow.org/", duration: "6-8 weeks" });
-            }
-            if (mentionsData) {
-                curriculum.push({ topic: "Data Engineering", focus: "ETL, Apache Spark, Data Pipelines, Big Data", resources: "Data Engineering Specialization - https://www.coursera.org/specializations/data-engineering, Databricks Academy - https://www.databricks.com/learn, Apache Spark Guide - https://spark.apache.org/docs/latest/", duration: "6-8 weeks" });
-            }
-            if (mentionsML && !mentionsAgentic && !mentionsNLP && !mentionsCV && !mentionsRL) {
-                curriculum.push({ topic: "Advanced Machine Learning", focus: "Advanced ML algorithms, Ensemble Methods, Feature Engineering, Model Optimization", resources: "Advanced Machine Learning Specialization - https://www.coursera.org/specializations/aml, Fast.ai - https://course.fast.ai/, Scikit-learn Advanced - https://scikit-learn.org/stable/", duration: "6-8 weeks" });
-            }
-            
-            // If NO specific topic detected, create a custom topic based on the actual goals
-            if (!mentionsAgentic && !mentionsNLP && !mentionsCV && !mentionsRL && !mentionsRobotics && !mentionsMLOps && !mentionsData && !mentionsML) {
-                // Use the actual goals to create a personalized topic
-                const goalWords = goalsStr.split(/\s+/).filter(w => w.length > 2);
-                let customTopic = "Advanced AI Applications";
-                let customFocus = "Advanced AI applications, Real-world projects";
-                
-                // Detect business-related goals
-                if (goalsStr.includes('business') || goalsStr.includes('commercial') || goalsStr.includes('enterprise') || goalsStr.includes('industry')) {
-                    customTopic = "AI in Business";
-                    customFocus = `Applying AI in business contexts: ${goals.substring(0, 80)}...`;
-                } else if (goalsStr.length > 10) {
-                    // Use the goals text directly
-                    customTopic = `Custom Learning Path: ${goals.substring(0, 40)}`;
-                    customFocus = `Focus on: ${goals.substring(0, 100)}...`;
-                }
-                
-                console.log('No specific topics detected, creating custom topic from goals:', { customTopic, customFocus });
-                
-                curriculum.push({ 
-                    topic: customTopic, 
-                    focus: customFocus, 
-                    resources: "Papers with Code - https://paperswithcode.com/, GitHub AI Projects - https://github.com/topics/artificial-intelligence, Coursera AI for Business - https://www.coursera.org/courses?query=ai%20business", 
-                    duration: "6-8 weeks" 
-                });
-            }
+        } else if (score < 50) {
+            return [
+                "Activate regulatory frameworks and governance mechanisms per National AI Index standards",
+                "Improve data infrastructure and integration",
+                "Launch pilot projects across several departments",
+                "Develop performance measurement practices aligned with National AI Index"
+            ];
+        } else if (score < 80) {
+            return [
+                "Integrate AI into operations and decision-making processes",
+                "Integrate strategy, infrastructure, and skills based on National AI Index pillars",
+                "Develop advanced performance indicators and governance",
+                "Achieve comprehensive integration at organizational level"
+            ];
+        } else if (score < 95) {
+            return [
+                "Lead strategic transformation with AI aligned with national goals",
+                "Enable advanced digital services with measurable impact",
+                "Achieve tangible and measurable impact exceeding 20% improvement",
+                "Expand initiatives and evaluate them periodically per National AI Index framework"
+            ];
         } else {
-            // Intermediate path
-            curriculum = [
-                { topic: "Deep Learning", focus: "Neural Networks, TensorFlow, PyTorch", resources: "Deep Learning Specialization - https://www.coursera.org/specializations/deep-learning, Fast.ai Practical Deep Learning - https://course.fast.ai/", duration: "6-8 weeks" }
+            return [
+                "Achieve national leadership in AI adoption",
+                "Drive continuous innovation and advanced development",
+                "Achieve measurable impact at national level",
+                "Contribute to developing national standards and practices"
             ];
         }
-        
-        curriculum.push({ topic: "Practical Projects", focus: "Building a portfolio on GitHub", resources: "Kaggle Competitions - https://www.kaggle.com/competitions, GitHub - https://github.com/, Papers with Code - https://paperswithcode.com/", duration: "Ongoing" });
-        
-        return {
-            curriculum: curriculum,
-            timeline: (() => {
-                const timelineItems = [];
-                let weekNum = 1;
-                
-                // Add weeks based on curriculum
-                curriculum.forEach((item, idx) => {
-                    const weeksForTopic = idx === curriculum.length - 1 ? Math.max(1, totalWeeks - weekNum + 1) : Math.max(2, Math.floor(totalWeeks / curriculum.length));
-                    
-                    for (let w = 0; w < weeksForTopic && weekNum <= totalWeeks; w++) {
-                        timelineItems.push({
-                            week: weekNum,
-                            topics: [item.topic],
-                            description: `${item.focus} - ${goals || 'Advanced learning'}`,
-                            projects: weekNum > Math.floor(totalWeeks * 0.6) ? "Practical project" : "Exercises",
-                            hours: timePerWeek
-                        });
-                        weekNum++;
-                    }
-                });
-                
-                return timelineItems;
-            })(),
-            milestones: (() => {
-                const milestones = [];
-                if (isBeginner) {
-                    milestones.push("Complete AI fundamentals", "Master Python and NumPy", "Build first ML model");
-                }
-                if (mentionsAgentic) {
-                    milestones.push("Understand AI Agents concepts", "Build first simple Agent", "Complete Multi-Agent System project");
-                } else if (mentionsNLP) {
-                    milestones.push("Complete NLP course", "Build NLP project", "Fine-tune first LLM");
-                } else if (mentionsCV) {
-                    milestones.push("Complete Computer Vision course", "Build Object Detection project", "Build Image Segmentation project");
-                } else if (isProfessional || isAdvanced) {
-                    milestones.push("Complete Advanced Deep Learning course", "Build advanced project", "Master Transfer Learning");
-                } else {
-                    milestones.push("Complete Deep Learning course", "Build first project", "Master ML fundamentals");
-                }
-                milestones.push("Complete 3 Kaggle competitions", "Build GitHub portfolio", "Earn certification");
-                // Only add "Job ready" milestone for students
-                if (roleIsStudent) {
-                    milestones.push("Job ready");
-                }
-                return milestones;
-            })(),
-            careerPaths: (() => {
-                const paths = [];
-                if (mentionsAgentic) {
-                    paths.push({ 
-                        title: "Agentic AI Engineer", 
-                        description: "Develop advanced AI Agent systems for production", 
-                        skills: ["Python", "LangChain", "Multi-Agent Systems", "Tool Use"], 
-                        steps: ["Learn LangChain", "Build Agents", "Learn Multi-Agent Systems", "Production projects"] 
-                    });
-                }
-                if (mentionsNLP) {
-                    paths.push({ 
-                        title: "NLP Engineer", 
-                        description: "Develop Natural Language Processing applications", 
-                        skills: ["Transformers", "LLMs", "Fine-tuning", "RAG"], 
-                        steps: ["Learn Transformers", "Fine-tune models", "Build RAG applications"] 
-                    });
-                }
-                if (mentionsCV) {
-                    paths.push({ 
-                        title: "Computer Vision Engineer", 
-                        description: "Develop Computer Vision applications", 
-                        skills: ["CNNs", "Object Detection", "Vision Transformers"], 
-                        steps: ["Learn CNNs", "Build Detection projects", "Learn Vision Transformers"] 
-                    });
-                }
-                if (isProfessional || isAdvanced) {
-                    paths.push({ 
-                        title: "Advanced ML Engineer", 
-                        description: "Develop advanced ML models for production", 
-                        skills: ["Advanced ML", "MLOps", "Production Systems"], 
-                        steps: ["Learn advanced ML", "Build projects", "Learn MLOps"] 
-                    });
-                }
-                if (paths.length === 0) {
-                    paths.push(
-                        { title: "ML Engineer", description: "Develop ML models for production", skills: ["Python", "ML", "MLOps"], steps: ["Learn ML", "Build projects", "Learn MLOps"] },
-                        { title: "AI Researcher", description: "Research and development in AI", skills: ["Math", "Research", "Papers"], steps: ["Advanced learning", "Read papers", "Research"] }
-                    );
-                }
-                return paths;
-            })()
-        };
     }
 }
 
-function generateFallbackJobAnalysis(jobTitle, responsibilities, industry) {
+function generateFallbackLearningPath(role, experience, goals, timePerWeek) {
+    // Fallback logic - similar to existing client-side code
     return {
-        transformations: ["AI will augment decision-making", "Automation will handle routine tasks"],
-        transferableSkills: ["Communication", "Leadership", "Problem-solving"],
-        newSkills: {
-            technical: ["AI Tools", "Data Literacy"],
-            soft: ["AI Collaboration", "Adaptive Learning"]
-        },
-        careerOptions: [{ title: "AI-Enhanced Role", description: "Enhanced role", path: "Learn | Apply | Lead" }],
-        upskillingPlan: ["Learn AI basics", "Apply to work", "Build portfolio"]
+        curriculum: [
+            { topic: "AI Fundamentals", focus: "Understanding AI basics", resources: "Online courses" },
+            { topic: "Machine Learning", focus: "ML algorithms", resources: "Hands-on tutorials" }
+        ],
+        timeline: [{ week: 1, topic: "AI Fundamentals", description: "Start learning basics" }],
+        milestones: ["Complete fundamentals", "Build projects", "Get certified"],
+        careerPaths: [{ title: "AI Professional", description: "AI career path", skills: ["AI", "ML"] }]
     };
 }
 
-// Email Configuration
-let transporter;
-
-// Initialize transporter only if credentials are provided
-if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-    // Check if custom SMTP settings are provided
-    if (process.env.SMTP_HOST && process.env.SMTP_PORT) {
-        // Use custom SMTP server
-        transporter = nodemailer.createTransport({
-            host: process.env.SMTP_HOST,
-            port: parseInt(process.env.SMTP_PORT),
-            secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            },
-            tls: {
-                rejectUnauthorized: false // Allow self-signed certificates
-            }
-        });
-        console.log(`Using custom SMTP server: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`);
-    } else {
-        // Try Gmail service (for @gmail.com addresses)
-        transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS // Use App Password for Gmail
-            }
-        });
-        console.log('Using Gmail service');
-    }
+function generateFallbackJobAnalysis(jobTitle, responsibilities, industry, lang = 'en') {
+    // Analyze the job title and responsibilities to generate dynamic content
+    const titleLower = jobTitle.toLowerCase();
+    const respLower = responsibilities.toLowerCase();
     
-    // Verify transporter configuration (non-blocking)
-    transporter.verify(function (error, success) {
-        if (error) {
-            console.error('Email transporter verification failed:', error.message);
-            console.error('Please check your email credentials and SMTP settings in .env file');
+    // Detect key aspects from BOTH title AND responsibilities
+    const isManagerial = titleLower.includes('manager') || titleLower.includes('director') || titleLower.includes('lead') || titleLower.includes('head') || 
+                         titleLower.includes('مدير') || titleLower.includes('رئيس') || titleLower.includes('قائد') ||
+                         respLower.includes('manage') || respLower.includes('lead') || respLower.includes('team') ||
+                         respLower.includes('إدارة') || respLower.includes('قيادة') || respLower.includes('فريق');
+    
+    const isTechnical = titleLower.includes('developer') || titleLower.includes('engineer') || titleLower.includes('programmer') || titleLower.includes('technical') ||
+                        titleLower.includes('مطور') || titleLower.includes('مهندس') || titleLower.includes('برمج') ||
+                        respLower.includes('code') || respLower.includes('develop') || respLower.includes('program') ||
+                        respLower.includes('برمجة') || respLower.includes('تطوير') || respLower.includes('كود');
+    
+    const isAnalytical = titleLower.includes('analyst') || titleLower.includes('data') || titleLower.includes('research') ||
+                         titleLower.includes('محلل') || titleLower.includes('بيانات') || titleLower.includes('بحث') ||
+                         respLower.includes('analyze') || respLower.includes('data') || respLower.includes('research') ||
+                         respLower.includes('تحليل') || respLower.includes('بيانات') || respLower.includes('بحث');
+    
+    const isCreative = titleLower.includes('designer') || titleLower.includes('creative') || titleLower.includes('marketing') ||
+                       titleLower.includes('مصمم') || titleLower.includes('إبداع') || titleLower.includes('تسويق') ||
+                       respLower.includes('design') || respLower.includes('creative') || respLower.includes('marketing') ||
+                       respLower.includes('تصميم') || respLower.includes('إبداع') || respLower.includes('تسويق');
+    
+    const isSales = titleLower.includes('sales') || titleLower.includes('account') || titleLower.includes('business development') ||
+                    titleLower.includes('مبيعات') || titleLower.includes('حساب') || titleLower.includes('تطوير أعمال') ||
+                    respLower.includes('sales') || respLower.includes('client') || respLower.includes('customer') ||
+                    respLower.includes('مبيعات') || respLower.includes('عميل') || respLower.includes('زبون');
+    
+    // Detect specific tasks from responsibilities to customize transformations
+    const hasBudgetManagement = respLower.includes('budget') || respLower.includes('ميزانية') || respLower.includes('مالي');
+    const hasReporting = respLower.includes('report') || respLower.includes('تقرير') || respLower.includes('تقارير');
+    const hasClientInteraction = respLower.includes('client') || respLower.includes('customer') || respLower.includes('عميل') || respLower.includes('زبون');
+    const hasProjectManagement = respLower.includes('project') || respLower.includes('مشروع') || respLower.includes('مشاريع');
+    const hasTraining = respLower.includes('train') || respLower.includes('تدريب') || respLower.includes('تعليم');
+    const hasStrategy = respLower.includes('strategy') || respLower.includes('strategic') || respLower.includes('استراتيجية') || respLower.includes('استراتيجي');
+    const hasTeam = respLower.includes('team') || respLower.includes('فريق') || respLower.includes('موظف') || respLower.includes('staff');
+    const hasData = respLower.includes('data') || respLower.includes('بيانات') || respLower.includes('معلومات');
+    
+    // Detect specific field of study/work
+    const isHistoryStudent = titleLower.includes('history') || titleLower.includes('تاريخ') || respLower.includes('history') || respLower.includes('تاريخ');
+    const isStudent = titleLower.includes('student') || titleLower.includes('طالب') || titleLower.includes('طالبة');
+    
+    if (lang === 'ar') {
+        // Arabic transformations based on role type, responsibilities, AND specific field
+        let transformations = [];
+        
+        // Field-specific transformations (highest priority)
+        if (isHistoryStudent || (isStudent && (titleLower.includes('history') || respLower.includes('history') || titleLower.includes('تاريخ') || respLower.includes('تاريخ')))) {
+            transformations.push(`الذكاء الاصطناعي يمكن أن يساعدك في دراسة التاريخ من خلال تحليل آلاف الوثائق التاريخية والبحث في الأرشيف الرقمي بسرعة فائقة`);
+            transformations.push(`أدوات الذكاء الاصطناعي يمكنها مساعدتك في فهم الأنماط التاريخية والاتجاهات من خلال تحليل البيانات التاريخية والبحث في المصادر`);
+            transformations.push(`الذكاء الاصطناعي يمكن أن يساعدك في ترجمة وتحليل النصوص التاريخية القديمة واللغات الميتة التي قد تكون صعبة الفهم`);
+            transformations.push(`أدوات تحليل النصوص بالذكاء الاصطناعي يمكنها مساعدتك في تحليل المصادر الأولية والثانوية بشكل أعمق واكتشاف الروابط الخفية`);
+            transformations.push(`الذكاء الاصطناعي يمكن أن يساعدك في إنشاء خطوط زمنية تفاعلية وخرائط تاريخية بناءً على البيانات التاريخية`);
+        } else if (isStudent) {
+            // Generic student but detect field from responsibilities
+            if (respLower.includes('research') || respLower.includes('بحث') || respLower.includes('دراسة')) {
+                transformations.push(`الذكاء الاصطناعي يمكن أن يساعدك في البحث الأكاديمي من خلال تحليل كميات كبيرة من الأوراق العلمية والبحوث في مجال دراستك`);
+                transformations.push(`أدوات الذكاء الاصطناعي يمكنها مساعدتك في تنظيم المعلومات وإنشاء ملخصات للبحوث والمراجع`);
+                transformations.push(`الذكاء الاصطناعي يمكن أن يساعدك في تحليل النصوص والبيانات المتعلقة بمجال دراستك بشكل أسرع وأكثر دقة`);
+            } else {
+                transformations.push(`الذكاء الاصطناعي يمكن أن يساعدك في دراستك من خلال تحليل المواد التعليمية وإنشاء ملخصات ذكية`);
+                transformations.push(`أدوات الذكاء الاصطناعي يمكنها مساعدتك في تنظيم المعلومات وإنشاء جداول دراسية فعالة`);
+            }
+        } else if (isManagerial) {
+            transformations.push(`الذكاء الاصطناعي سيعزز قدراتك في اتخاذ القرارات الاستراتيجية كـ${jobTitle} من خلال تحليل البيانات المتقدمة والتنبؤات`);
+            if (hasBudgetManagement) {
+                transformations.push(`أدوات الذكاء الاصطناعي ستساعدك في إدارة الميزانية والتنبؤ المالي بشكل أكثر دقة`);
+            }
+            if (hasReporting) {
+                transformations.push(`الأتمتة ستتعامل مع إنشاء التقارير الروتينية، مما يوفر لك الوقت للتركيز على التحليل الاستراتيجي`);
+            }
+            if (hasTeam) {
+                transformations.push(`أدوات الذكاء الاصطناعي ستساعدك في تحليل أداء الفريق وتحديد فرص التحسين`);
+            }
+            if (hasStrategy) {
+                transformations.push(`الذكاء الاصطناعي سيدعم عمليات التخطيط الاستراتيجي والتنبؤ في صناعة ${industry}`);
+            }
+            if (transformations.length < 4) {
+                transformations.push(`الأتمتة ستتعامل مع المهام الإدارية الروتينية، مما يسمح لك بالتركيز على القيادة والتخطيط الاستراتيجي`);
+            }
+        } else if (isTechnical) {
+            transformations.push(`الذكاء الاصطناعي سيغير طريقة تطوير البرمجيات، حيث ستستخدم أدوات التطوير المدعومة بالذكاء الاصطناعي`);
+            if (hasProjectManagement) {
+                transformations.push(`بناءً على مسؤولياتك في إدارة المشاريع، أدوات الذكاء الاصطناعي ستساعدك في تتبع التقدم وتحديد المشاكل المحتملة بشكل أكثر كفاءة`);
+            }
+            if (hasReporting) {
+                transformations.push(`في إطار مسؤولياتك في إنشاء التقارير التقنية، الأتمتة ستساعدك في إنشاء تقارير الكود والأداء تلقائياً`);
+            }
+            transformations.push(`الأتمتة ستسرع من عمليات الاختبار والتصحيح في دورك كـ${jobTitle}`);
+            transformations.push(`ستحتاج إلى فهم نماذج الذكاء الاصطناعي والتعلم الآلي لدمجها في حلولك`);
+            if (transformations.length < 4) {
+                transformations.push(`أدوات الذكاء الاصطناعي ستساعدك في كتابة كود أكثر كفاءة وتحسين الأداء`);
+            }
+        } else if (isAnalytical) {
+            transformations.push(`الذكاء الاصطناعي سيعزز قدراتك التحليلية كـ${jobTitle} من خلال معالجة كميات كبيرة من البيانات`);
+            if (hasReporting) {
+                transformations.push(`بناءً على مسؤولياتك في إنشاء التقارير التحليلية، الأتمتة ستتعامل مع التقارير الروتينية تلقائياً، مما يسمح لك بالتركيز على الرؤى الاستراتيجية والتحليلات المتقدمة`);
+            }
+            if (hasData) {
+                transformations.push(`في إطار مسؤولياتك في تحليل البيانات، أدوات التعلم الآلي ستساعدك في اكتشاف الأنماط والتنبؤات التي قد تفوتك في التحليل اليدوي`);
+            }
+            transformations.push(`أدوات التعلم الآلي ستساعدك في اكتشاف الأنماط والتنبؤات في البيانات`);
+            if (hasStrategy) {
+                transformations.push(`الذكاء الاصطناعي سيدعم مسؤولياتك في التخطيط الاستراتيجي من خلال تحليلات تنبؤية أكثر دقة في صناعة ${industry}`);
+            }
+            if (transformations.length < 4) {
+                transformations.push(`الأتمتة ستتعامل مع تحليل البيانات الروتينية، مما يسمح لك بالتركيز على الرؤى الاستراتيجية`);
+            }
         } else {
-            console.log('✓ Email transporter is ready to send messages');
+            transformations.push(`الذكاء الاصطناعي سيغير طريقة عملك كـ${jobTitle} في صناعة ${industry}`);
+            if (hasClientInteraction) {
+                transformations.push(`أدوات الذكاء الاصطناعي ستساعدك في تحسين تجربة العملاء والتفاعل معهم بشكل أكثر فعالية`);
+            }
+            if (hasTraining) {
+                transformations.push(`الذكاء الاصطناعي سيدعم عمليات التدريب والتعليم، مما يجعلها أكثر تخصيصاً وفعالية`);
+            }
+            transformations.push(`الأتمتة ستتعامل مع المهام الروتينية، مما يسمح لك بالتركيز على القيمة المضافة`);
+            if (transformations.length < 4) {
+                transformations.push(`أدوات الذكاء الاصطناعي ستساعدك في تحسين الإنتاجية واتخاذ قرارات أفضل`);
+            }
         }
-    });
-} else {
-    console.warn('EMAIL_USER and EMAIL_PASS not set in .env file. Email functionality will be disabled.');
-}
-
-// Email sending endpoint
-app.post('/api/send-results-email', async (req, res) => {
-    try {
-        // Check if email transporter is configured
-        if (!transporter) {
-            return res.status(500).json({ 
-                error: 'Email service not configured', 
-                details: 'EMAIL_USER and EMAIL_PASS must be set in .env file' 
+        
+        // Ensure we have at least 4 transformations
+        while (transformations.length < 4) {
+            transformations.push(`ستحتاج إلى تعلم كيفية التعاون مع أنظمة الذكاء الاصطناعي في دورك`);
+        }
+        
+        // Extract transferable skills from responsibilities - more comprehensive detection
+        const transferableSkills = [];
+        if (respLower.includes('communicat') || respLower.includes('تعاون') || respLower.includes('تواصل') || respLower.includes('present') || respLower.includes('عرض')) {
+            transferableSkills.push('التواصل الفعال');
+        }
+        if (respLower.includes('lead') || respLower.includes('manage') || respLower.includes('supervis') || respLower.includes('قيادة') || respLower.includes('إدارة') || respLower.includes('إشراف')) {
+            transferableSkills.push('القيادة والإدارة');
+        }
+        if (respLower.includes('problem') || respLower.includes('solve') || respLower.includes('resolve') || respLower.includes('حل') || respLower.includes('مشكلة')) {
+            transferableSkills.push('حل المشكلات');
+        }
+        if (respLower.includes('analyz') || respLower.includes('evaluat') || respLower.includes('assess') || respLower.includes('تحليل') || respLower.includes('تقييم')) {
+            transferableSkills.push('التحليل النقدي');
+        }
+        if (respLower.includes('creativ') || respLower.includes('innov') || respLower.includes('design') || respLower.includes('إبداع') || respLower.includes('ابتكار') || respLower.includes('تصميم')) {
+            transferableSkills.push('الإبداع والابتكار');
+        }
+        if (respLower.includes('team') || respLower.includes('collaborat') || respLower.includes('coordinat') || respLower.includes('فريق') || respLower.includes('تعاون') || respLower.includes('تنسيق')) {
+            transferableSkills.push('العمل الجماعي');
+        }
+        if (respLower.includes('plan') || respLower.includes('strateg') || respLower.includes('تخطيط') || respLower.includes('استراتيجية')) {
+            transferableSkills.push('التخطيط الاستراتيجي');
+        }
+        if (respLower.includes('client') || respLower.includes('customer') || respLower.includes('stakeholder') || respLower.includes('عميل') || respLower.includes('زبون')) {
+            transferableSkills.push('إدارة العلاقات');
+        }
+        if (respLower.includes('train') || respLower.includes('teach') || respLower.includes('mentor') || respLower.includes('تدريب') || respLower.includes('تعليم')) {
+            transferableSkills.push('التدريب والتطوير');
+        }
+        
+        // Ensure we have at least 5 skills
+        const defaultSkills = ['التفكير الاستراتيجي', 'التكيف مع التغيير', 'الذكاء العاطفي', 'إدارة الوقت', 'التفاوض'];
+        defaultSkills.forEach(skill => {
+            if (transferableSkills.length < 6 && !transferableSkills.includes(skill)) {
+                transferableSkills.push(skill);
+            }
+        });
+        
+        // Technical and soft skills based on role AND field
+        let technicalSkills = [];
+        let softSkills = [];
+        
+        // Field-specific skills (highest priority)
+        if (isHistoryStudent || (isStudent && (titleLower.includes('history') || respLower.includes('history') || titleLower.includes('تاريخ') || respLower.includes('تاريخ')))) {
+            technicalSkills = ['استخدام أدوات الذكاء الاصطناعي لتحليل الوثائق التاريخية', 'أدوات البحث في الأرشيف الرقمي', 'أدوات ترجمة النصوص التاريخية', 'أدوات تحليل الأنماط التاريخية', 'أدوات إنشاء الخطوط الزمنية التفاعلية'];
+            softSkills = ['التفكير النقدي في تحليل المصادر', 'التعامل مع أدوات الذكاء الاصطناعي في البحث التاريخي', 'التعلم المستمر في استخدام التقنيات الجديدة', 'التوازن بين التحليل الآلي والبشري'];
+        } else if (isStudent) {
+            technicalSkills = ['استخدام أدوات الذكاء الاصطناعي للبحث الأكاديمي', 'أدوات تحليل النصوص والبحوث', 'أدوات تنظيم المعلومات الأكاديمية', 'أدوات إنشاء الملخصات الذكية'];
+            softSkills = ['التفكير النقدي في استخدام الذكاء الاصطناعي', 'التعلم المستمر', 'التعامل مع أدوات الذكاء الاصطناعي في الدراسة', 'التوازن بين المساعدة الآلية والفهم البشري'];
+        } else if (isTechnical) {
+            technicalSkills = ['استخدام أدوات التطوير المدعومة بالذكاء الاصطناعي في عملك', 'دمج نماذج التعلم الآلي في التطبيقات', 'أتمتة العمليات في التطوير', 'أدوات تحليل الكود بالذكاء الاصطناعي'];
+            softSkills = ['التفكير الحسابي', 'حل المشكلات المعقدة', 'التعلم المستمر', 'التعاون مع أنظمة الذكاء الاصطناعي'];
+        } else if (isAnalytical) {
+            technicalSkills = ['استخدام أدوات الذكاء الاصطناعي في تحليل البيانات', 'أدوات التعلم الآلي للتحليل', 'أدوات تصور البيانات المتقدمة', 'أدوات التحليل التنبؤي'];
+            softSkills = ['التفكير التحليلي', 'التفسير النقدي للنتائج', 'التواصل بالبيانات', 'الفضول الفكري'];
+        } else if (isManagerial) {
+            technicalSkills = ['استخدام أدوات اتخاذ القرار المدعومة بالذكاء الاصطناعي', 'تحليل البيانات للمديرين', 'أدوات إدارة المشاريع بالذكاء الاصطناعي', 'التحليلات التنبؤية'];
+            softSkills = ['القيادة الاستراتيجية', 'إدارة التغيير', 'التفكير الاستراتيجي', 'اتخاذ القرارات المعقدة'];
+        } else {
+            technicalSkills = ['استخدام أدوات الذكاء الاصطناعي في مجال عملك', 'أدوات الإنتاجية المدعومة بالذكاء الاصطناعي', 'أدوات تحليل البيانات الأساسية', 'أتمتة المهام الروتينية'];
+            softSkills = ['التكيف مع التكنولوجيا', 'التعلم المستمر', 'التعاون مع أنظمة الذكاء الاصطناعي', 'المرونة'];
+        }
+        
+        // Career options - CHECK FIELD FIRST before role type
+        const careerOptions = [];
+        
+        // Field-specific career options (highest priority)
+        if (isHistoryStudent || (isStudent && (titleLower.includes('history') || respLower.includes('history') || titleLower.includes('تاريخ') || respLower.includes('تاريخ')))) {
+            careerOptions.push({
+                title: `باحث تاريخي يستخدم أدوات الذكاء الاصطناعي`,
+                description: `استخدام أدوات الذكاء الاصطناعي لتحسين البحث التاريخي وتحليل الوثائق والبحث في الأرشيف`,
+                path: 'تعلم أدوات تحليل الوثائق بالذكاء الاصطناعي | تطبيق على مشاريع تاريخية | تطوير مهارات البحث'
+            });
+            careerOptions.push({
+                title: `مؤرخ رقمي متخصص`,
+                description: `الجمع بين الخبرة التاريخية وأدوات الذكاء الاصطناعي لإنشاء مشاريع تاريخية تفاعلية وتحليلية`,
+                path: 'تعلم أدوات الذكاء الاصطناعي للتاريخ | بناء مشاريع تاريخية رقمية | تطوير المحتوى التاريخي'
+            });
+            careerOptions.push({
+                title: `أكاديمي في التاريخ يستخدم الذكاء الاصطناعي`,
+                description: `استخدام الذكاء الاصطناعي في التدريس والبحث الأكاديمي في التاريخ`,
+                path: 'تعلم تطبيقات الذكاء الاصطناعي في التعليم | تطبيق على البحث الأكاديمي | تطوير المناهج'
+            });
+            careerOptions.push({
+                title: `محرر تاريخي رقمي`,
+                description: `استخدام أدوات الذكاء الاصطناعي لتحرير ونشر المحتوى التاريخي الرقمي`,
+                path: 'تعلم أدوات النشر الرقمي | تطبيق على المحتوى التاريخي | تطوير المهارات الرقمية'
+            });
+        } else if (isStudent) {
+            // Generic student - use field from industry or responsibilities
+            careerOptions.push({
+                title: `${jobTitle} يستخدم أدوات الذكاء الاصطناعي`,
+                description: `استخدام أدوات الذكاء الاصطناعي لتحسين الدراسة والبحث في مجال ${industry}`,
+                path: 'تعلم أدوات الذكاء الاصطناعي في مجال دراستك | تطبيق على مشاريعك | تطوير المهارات'
+            });
+            careerOptions.push({
+                title: `باحث أكاديمي في ${industry} يستخدم الذكاء الاصطناعي`,
+                description: `استخدام أدوات الذكاء الاصطناعي في البحث الأكاديمي في مجال ${industry}`,
+                path: 'تعلم أدوات البحث بالذكاء الاصطناعي | تطبيق على أبحاثك | تطوير المهارات البحثية'
+            });
+        } else if (isTechnical) {
+            careerOptions.push({
+                title: `${jobTitle} محسّن بأدوات الذكاء الاصطناعي`,
+                description: `استخدام أدوات الذكاء الاصطناعي لتحسين التطوير والبرمجة في ${industry}`,
+                path: 'تعلم أدوات التطوير بالذكاء الاصطناعي | تطبيق على مشاريعك | تحسين الإنتاجية'
+            });
+        } else if (isAnalytical) {
+            careerOptions.push({
+                title: `${jobTitle} يستخدم الذكاء الاصطناعي في التحليل`,
+                description: `استخدام أدوات الذكاء الاصطناعي لتحسين التحليل في ${industry}`,
+                path: 'تعلم أدوات التحليل بالذكاء الاصطناعي | تطبيق على بياناتك | تحسين الدقة'
+            });
+        } else if (isManagerial) {
+            careerOptions.push({
+                title: `${jobTitle} يستخدم الذكاء الاصطناعي في الإدارة`,
+                description: `استخدام أدوات الذكاء الاصطناعي لتحسين القيادة واتخاذ القرارات في ${industry}`,
+                path: 'تعلم أدوات القيادة بالذكاء الاصطناعي | تطبيق على قراراتك | تحسين الأداء'
+            });
+        } else {
+            careerOptions.push({
+                title: `${jobTitle} محسّن بأدوات الذكاء الاصطناعي`,
+                description: `استخدام أدوات الذكاء الاصطناعي لتحسين العمل في ${industry}`,
+                path: 'تعلم أدوات الذكاء الاصطناعي في مجالك | تطبيق على مهامك | تحسين الإنتاجية'
             });
         }
         
-        const { email, toolName, results, language = 'en' } = req.body;
-        
-        if (!email || !toolName || !results) {
-            return res.status(400).json({ error: 'Missing required fields' });
-        }
-        
-        // Validate email format
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            return res.status(400).json({ error: 'Invalid email address format' });
-        }
-        
-        // Format email content based on tool
-        let emailSubject, emailContent;
-        
-        if (language === 'ar') {
-            emailSubject = `نتائج ${toolName} - جمعية الذكاء الاصطناعي | ICAN 2026`;
-            emailContent = formatEmailContentArabic(toolName, results);
-        } else {
-            emailSubject = `Results of ${toolName} - AI Association | ICAN 2026`;
-            emailContent = formatEmailContentEnglish(toolName, results);
-        }
-        
-        const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: email,
-            subject: emailSubject,
-            html: emailContent
-        };
-        
-        await transporter.sendMail(mailOptions);
-        
-        console.log(`Email sent successfully to ${email}`);
-        res.json({ success: true, message: 'Email sent successfully' });
-    } catch (error) {
-        console.error('Error sending email:', error);
-        
-        // Provide more specific error messages
-        let errorMessage = 'Failed to send email';
-        let userFriendlyMessage = 'فشل إرسال البريد الإلكتروني. يرجى المحاولة مرة أخرى.';
-        
-        if (error.code === 'EDNS' || error.code === 'ENOTFOUND') {
-            errorMessage = 'SMTP server not found. Please check your SMTP_HOST setting in .env file.';
-            userFriendlyMessage = 'خادم البريد الإلكتروني غير موجود. يرجى التحقق من إعدادات SMTP_HOST في ملف .env';
-        } else if (error.code === 'EAUTH' || error.responseCode === 535) {
-            if (process.env.EMAIL_USER && process.env.EMAIL_USER.includes('@') && !process.env.EMAIL_USER.includes('@gmail.com')) {
-                errorMessage = 'Email authentication failed. For custom domain emails, you need to configure SMTP settings. Add SMTP_HOST, SMTP_PORT, and SMTP_SECURE to your .env file. Contact your email provider for SMTP settings.';
-                userFriendlyMessage = 'فشل التحقق من البريد الإلكتروني. يرجى التحقق من إعدادات SMTP في ملف .env';
+        // Add more field-specific options if needed
+        while (careerOptions.length < 4) {
+            if (isHistoryStudent || (isStudent && (titleLower.includes('history') || respLower.includes('history') || titleLower.includes('تاريخ') || respLower.includes('تاريخ')))) {
+                careerOptions.push({
+                    title: `محترف في التاريخ يستخدم الذكاء الاصطناعي`,
+                    description: `استخدام أدوات الذكاء الاصطناعي لتحسين الأداء في مجال التاريخ`,
+                    path: 'تعلم أدوات الذكاء الاصطناعي المخصصة للتاريخ | تطبيق عملي | التطوير المستمر'
+                });
             } else {
-                errorMessage = 'Email authentication failed. For Gmail, use an App Password (not your regular password). For custom domains, configure SMTP settings in .env file.';
-                userFriendlyMessage = 'فشل التحقق من البريد الإلكتروني. يرجى التحقق من كلمة المرور وإعدادات SMTP';
+                careerOptions.push({
+                    title: `محترف في ${industry} يستخدم الذكاء الاصطناعي`,
+                    description: `استخدام أدوات الذكاء الاصطناعي لتحسين الأداء في مجال ${industry}`,
+                    path: 'تعلم أدوات الذكاء الاصطناعي المخصصة لمجالك | تطبيق عملي | التطوير المستمر'
+                });
             }
-        } else if (error.code === 'ECONNECTION' || error.code === 'ETIMEDOUT') {
-            errorMessage = 'Could not connect to email server. Please check your SMTP_HOST and SMTP_PORT settings, and your internet connection.';
-            userFriendlyMessage = 'تعذر الاتصال بخادم البريد الإلكتروني. يرجى التحقق من إعدادات SMTP_HOST و SMTP_PORT';
         }
         
-        res.status(500).json({ 
-            error: errorMessage, 
-            details: error.message,
-            userMessage: userFriendlyMessage
+        // Upskilling plan - CHECK FIELD FIRST
+        const upskillingPlan = [];
+        if (isHistoryStudent || (isStudent && (titleLower.includes('history') || respLower.includes('history') || titleLower.includes('تاريخ') || respLower.includes('تاريخ')))) {
+            upskillingPlan.push('تعلم استخدام أدوات الذكاء الاصطناعي لتحليل الوثائق التاريخية (مثل OCR للوثائق القديمة)');
+            upskillingPlan.push('استكشف أدوات البحث في الأرشيف الرقمي المدعومة بالذكاء الاصطناعي');
+            upskillingPlan.push('تعلم استخدام أدوات ترجمة النصوص التاريخية واللغات القديمة');
+            upskillingPlan.push('مارس استخدام أدوات تحليل الأنماط التاريخية في مشاريعك الدراسية');
+            upskillingPlan.push('انضم إلى مجتمعات الباحثين التاريخيين الذين يستخدمون التكنولوجيا');
+            upskillingPlan.push('ابحث عن أدوات الذكاء الاصطناعي المخصصة للبحث التاريخي');
+            upskillingPlan.push('طبق ما تتعلمه على أبحاثك التاريخية الحالية');
+        } else if (isStudent) {
+            upskillingPlan.push(`تعلم استخدام أدوات الذكاء الاصطناعي المخصصة لمجال ${industry}`);
+            upskillingPlan.push('استكشف أدوات البحث الأكاديمي المدعومة بالذكاء الاصطناعي');
+            upskillingPlan.push('تعلم استخدام أدوات تحليل النصوص والبحوث');
+            upskillingPlan.push('مارس استخدام أدوات تنظيم المعلومات الأكاديمية');
+            upskillingPlan.push(`انضم إلى مجتمعات طلابية في ${industry} تستخدم الذكاء الاصطناعي`);
+            upskillingPlan.push('طبق ما تتعلمه على مشاريعك الدراسية الحالية');
+        } else if (isTechnical) {
+            upskillingPlan.push('تعلم استخدام أدوات التطوير المدعومة بالذكاء الاصطناعي في عملك اليومي');
+            upskillingPlan.push('استكشف أدوات تحليل الكود والمساعدة في البرمجة');
+            upskillingPlan.push('تعلم استخدام أدوات أتمتة الاختبار والتصحيح');
+            upskillingPlan.push('مارس استخدام أدوات الذكاء الاصطناعي في مشاريعك الحالية');
+            upskillingPlan.push('انضم إلى مجتمعات المطورين الذين يستخدمون أدوات الذكاء الاصطناعي');
+            upskillingPlan.push('طبق ما تتعلمه مباشرة على مهامك اليومية');
+        } else if (isAnalytical) {
+            upskillingPlan.push('تعلم استخدام أدوات الذكاء الاصطناعي في تحليل البيانات في عملك');
+            upskillingPlan.push('استكشف أدوات التحليل التنبؤي المتاحة لمجالك');
+            upskillingPlan.push('تعلم استخدام أدوات تصور البيانات المتقدمة');
+            upskillingPlan.push('مارس استخدام أدوات الذكاء الاصطناعي على بياناتك الحالية');
+            upskillingPlan.push('انضم إلى مجتمعات المحللين الذين يستخدمون الذكاء الاصطناعي');
+            upskillingPlan.push('طبق ما تتعلمه على تحليلاتك اليومية');
+        } else {
+            upskillingPlan.push(`تعلم استخدام أدوات الذكاء الاصطناعي المخصصة لمجال ${industry}`);
+            upskillingPlan.push(`استكشف أدوات الذكاء الاصطناعي المتاحة في ${industry}`);
+            upskillingPlan.push('تعلم استخدام أدوات الإنتاجية المدعومة بالذكاء الاصطناعي');
+            upskillingPlan.push('احضر ورش عمل حول استخدام الذكاء الاصطناعي في مجالك');
+            upskillingPlan.push(`انضم إلى مجتمعات مهنية في ${industry} تركز على الذكاء الاصطناعي`);
+            upskillingPlan.push('طبق ما تتعلمه مباشرة على مهامك اليومية');
+        }
+        
+        return {
+            transformations: transformations.slice(0, 5),
+            transferableSkills: transferableSkills.slice(0, 6),
+            newSkills: {
+                technical: technicalSkills,
+                soft: softSkills
+            },
+            careerOptions: careerOptions.slice(0, 5),
+            upskillingPlan: upskillingPlan.slice(0, 8),
+            opportunityAnalysis: isHistoryStudent || (isStudent && (titleLower.includes('history') || respLower.includes('history') || titleLower.includes('تاريخ') || respLower.includes('تاريخ'))) 
+                ? `كطالب تاريخ، لديك فرص ممتازة لاستخدام الذكاء الاصطناعي في دراستك. بناءً على مسؤولياتك (${responsibilities.substring(0, 80)}${responsibilities.length > 80 ? '...' : ''})، يمكن للذكاء الاصطناعي أن يساعدك في تحليل آلاف الوثائق التاريخية، البحث في الأرشيف الرقمي، فهم الأنماط التاريخية، وترجمة النصوص القديمة. المهارات القابلة للتحويل مثل ${transferableSkills.slice(0, 3).join(' و')} ستظل قيّمة جداً. ابدأ بتعلم أدوات الذكاء الاصطناعي المخصصة للبحث التاريخي وطبقها على مشاريعك الدراسية.`
+                : isStudent
+                ? `كطالب في ${industry}، لديك فرص ممتازة لاستخدام الذكاء الاصطناعي في دراستك. بناءً على مسؤولياتك (${responsibilities.substring(0, 80)}${responsibilities.length > 80 ? '...' : ''})، يمكن للذكاء الاصطناعي أن يساعدك في البحث الأكاديمي، تحليل النصوص، تنظيم المعلومات، وإنشاء ملخصات. المهارات القابلة للتحويل مثل ${transferableSkills.slice(0, 3).join(' و')} ستظل قيّمة. ابدأ بتعلم أدوات الذكاء الاصطناعي المخصصة لمجال دراستك.`
+                : `كـ${jobTitle} في ${industry}، لديك فرص ممتازة لاستخدام الذكاء الاصطناعي في عملك. بناءً على مسؤولياتك (${responsibilities.substring(0, 80)}${responsibilities.length > 80 ? '...' : ''})، يمكن للذكاء الاصطناعي أن يحسن ${hasBudgetManagement ? 'إدارة الميزانية ' : ''}${hasReporting ? 'وإنشاء التقارير ' : ''}${hasTeam ? 'وإدارة الفريق ' : ''}${hasStrategy ? 'والتخطيط الاستراتيجي ' : ''}في مجالك. المهارات القابلة للتحويل مثل ${transferableSkills.slice(0, 3).join(' و')} ستظل قيّمة جداً. ابدأ بالتعلم التدريجي وطبق ما تتعلمه مباشرة في مهامك اليومية.`
+        };
+    } else {
+        // English version - similar logic but in English
+        let transformations = [];
+        if (isManagerial) {
+            transformations = [
+                `AI will enhance your strategic decision-making capabilities as ${jobTitle} through advanced data analysis and predictions`,
+                `Automation will handle routine administrative tasks, allowing you to focus on leadership and strategic planning`,
+                `AI tools will help you analyze team performance and identify improvement opportunities`,
+                `AI will support planning and forecasting processes in the ${industry} industry`
+            ];
+        } else if (isTechnical) {
+            transformations = [
+                `AI will change how software is developed, as you'll use AI-powered development tools`,
+                `Automation will speed up testing and debugging processes in your role as ${jobTitle}`,
+                `You'll need to understand AI and ML models to integrate them into your solutions`,
+                `AI tools will help you write more efficient code and improve performance`
+            ];
+        } else if (isAnalytical) {
+            transformations = [
+                `AI will enhance your analytical capabilities as ${jobTitle} by processing large volumes of data`,
+                `Machine learning tools will help you discover patterns and predictions in data`,
+                `Automation will handle routine data analysis, allowing you to focus on strategic insights`,
+                `You'll use AI tools to improve analysis accuracy in the ${industry} industry`
+            ];
+        } else {
+            transformations = [
+                `AI will transform how you work as ${jobTitle} in the ${industry} industry`,
+                `Automation will handle routine tasks, allowing you to focus on value-added work`,
+                `AI tools will help you improve productivity and make better decisions`,
+                `You'll need to learn how to collaborate with AI systems in your role`
+            ];
+        }
+        
+        const transferableSkills = [];
+        if (respLower.includes('communicat') || respLower.includes('collaborat')) {
+            transferableSkills.push('Effective Communication');
+        }
+        if (respLower.includes('lead') || respLower.includes('manage')) {
+            transferableSkills.push('Leadership & Management');
+        }
+        if (respLower.includes('problem') || respLower.includes('solve')) {
+            transferableSkills.push('Problem-solving');
+        }
+        if (respLower.includes('analyz')) {
+            transferableSkills.push('Critical Analysis');
+        }
+        if (respLower.includes('creativ') || respLower.includes('innov')) {
+            transferableSkills.push('Creativity & Innovation');
+        }
+        if (respLower.includes('team') || respLower.includes('collaborat')) {
+            transferableSkills.push('Teamwork');
+        }
+        
+        const defaultSkills = ['Strategic Thinking', 'Adaptability', 'Emotional Intelligence', 'Time Management', 'Negotiation'];
+        defaultSkills.forEach(skill => {
+            if (transferableSkills.length < 6 && !transferableSkills.includes(skill)) {
+                transferableSkills.push(skill);
+            }
         });
+        
+        let technicalSkills = [];
+        let softSkills = [];
+        
+        if (isTechnical) {
+            technicalSkills = ['AI-Powered Development Tools', 'Machine Learning Models', 'Natural Language Processing', 'Computer Vision', 'Process Automation'];
+            softSkills = ['Computational Thinking', 'Complex Problem-solving', 'Continuous Learning', 'AI Collaboration'];
+        } else if (isAnalytical) {
+            technicalSkills = ['Advanced Data Analysis', 'Machine Learning Tools', 'Statistical Programming', 'Data Visualization', 'AI Analytics Tools'];
+            softSkills = ['Analytical Thinking', 'Critical Interpretation', 'Data Communication', 'Intellectual Curiosity'];
+        } else if (isManagerial) {
+            technicalSkills = ['AI-Powered Decision Tools', 'Data Analytics for Managers', 'AI Project Management Tools', 'Predictive Analytics'];
+            softSkills = ['Strategic Leadership', 'Change Management', 'Strategic Thinking', 'Complex Decision-making'];
+        } else {
+            technicalSkills = ['AI Fundamentals', 'AI-Powered Productivity Tools', 'Basic Data Analysis', 'Task Automation'];
+            softSkills = ['Tech Adaptability', 'Continuous Learning', 'AI Collaboration', 'Flexibility'];
+        }
+        
+        const careerOptions = [];
+        if (isTechnical) {
+            careerOptions.push({
+                title: `AI Engineer - ${industry}`,
+                description: `Develop advanced AI systems in the ${industry} industry, focusing on ML models and practical applications`,
+                path: 'Learn ML Fundamentals | Master Development Tools | Build Practical Projects'
+            });
+            careerOptions.push({
+                title: `AI Solutions Developer`,
+                description: `Design and develop custom AI solutions for businesses in the ${industry} industry`,
+                path: 'Learn Frameworks | Understand Business Needs | Develop Custom Solutions'
+            });
+        } else if (isAnalytical) {
+            careerOptions.push({
+                title: `Advanced Data Analyst - ${industry}`,
+                description: `Use AI and ML techniques to analyze complex data in the ${industry} industry`,
+                path: 'Learn ML Techniques | Master Analytics Tools | Apply to Real Data'
+            });
+            careerOptions.push({
+                title: `Data Scientist - ${industry}`,
+                description: `Build advanced predictive and analytical models using AI`,
+                path: 'Learn Advanced Statistics | Master Programming | Build Advanced Models'
+            });
+        } else if (isManagerial) {
+            careerOptions.push({
+                title: `Digital Transformation Manager - ${industry}`,
+                description: `Lead digital transformation and AI initiatives in the ${industry} industry`,
+                path: 'Understand Transformation Strategies | Learn Tech Project Management | Build Teams'
+            });
+            careerOptions.push({
+                title: `AI Consultant`,
+                description: `Help companies adopt and use AI technologies`,
+                path: 'Learn AI Fundamentals | Understand Business Needs | Develop Strategies'
+            });
+        } else {
+            careerOptions.push({
+                title: `AI Specialist - ${industry}`,
+                description: `Apply AI technologies in the ${industry} industry to improve processes and services`,
+                path: 'Learn AI Fundamentals | Understand Industry Applications | Practical Application'
+            });
+        }
+        
+        while (careerOptions.length < 4) {
+            careerOptions.push({
+                title: `AI-Enhanced Professional - ${industry}`,
+                description: `Enhanced role combining your current expertise as ${jobTitle} with AI technologies`,
+                path: 'Learn AI Fundamentals | Apply to Current Role | Expand Skills'
+            });
+        }
+        
+        const upskillingPlan = [];
+        if (isTechnical) {
+            upskillingPlan.push('Start with a foundational course in machine learning and AI');
+            upskillingPlan.push('Learn to use AI-powered development tools like GitHub Copilot');
+            upskillingPlan.push('Practice building simple ML models using Python');
+            upskillingPlan.push('Join developer communities focused on AI');
+            upskillingPlan.push('Build a practical project combining your current expertise with AI');
+            upskillingPlan.push('Earn a certification in machine learning or AI');
+        } else if (isAnalytical) {
+            upskillingPlan.push('Learn ML and AI fundamentals');
+            upskillingPlan.push('Master advanced data analysis tools like Python and R');
+            upskillingPlan.push('Learn to use ML libraries like scikit-learn and TensorFlow');
+            upskillingPlan.push('Practice analyzing real datasets using AI techniques');
+            upskillingPlan.push('Join data science communities');
+            upskillingPlan.push('Build a portfolio showcasing your AI data analysis skills');
+        } else {
+            upskillingPlan.push('Learn AI fundamentals and its applications in the ' + industry + ' industry');
+            upskillingPlan.push('Explore AI tools available in your field');
+            upskillingPlan.push('Attend workshops and training courses on AI');
+            upskillingPlan.push('Learn to use AI-powered productivity tools');
+            upskillingPlan.push('Join professional communities focused on AI');
+            upskillingPlan.push('Look for opportunities to apply what you learn in your current role');
+        }
+        
+        return {
+            transformations: transformations.slice(0, 5),
+            transferableSkills: transferableSkills.slice(0, 6),
+            newSkills: {
+                technical: technicalSkills,
+                soft: softSkills
+            },
+            careerOptions: careerOptions.slice(0, 5),
+            upskillingPlan: upskillingPlan.slice(0, 8),
+            opportunityAnalysis: `As a ${jobTitle} in the ${industry} industry, you have an excellent opportunity to leverage AI transformation. Transferable skills like ${transferableSkills.slice(0, 3).join(', ')} will remain valuable, while you'll need to develop new technical skills in AI. Start with gradual learning and apply what you learn in your current role to build practical experience.`
+        };
     }
-});
-
-function formatEmailContentEnglish(toolName, results) {
-    let resultsSection = '';
-    
-    if (toolName === 'AI Skills Gap Analyzer') {
-        resultsSection = `
-            <h3>Your Assessment Results</h3>
-            <p><strong>Readiness Score:</strong> ${results.readinessScore}/100</p>
-            <h4>Priority Gaps:</h4>
-            <ul>${results.priorityGaps.map(gap => `<li>${gap}</li>`).join('')}</ul>
-            <h4>Action Roadmap:</h4>
-            <ul>${results.roadmap.map(step => `<li>${step}</li>`).join('')}</ul>
-            <h4>Industry Benchmark:</h4>
-            <p>Your Score: ${results.readinessScore}/100 | Industry Avg: ${results.benchmark?.industryAvg || 'N/A'}/100 | Top Performers: ${results.benchmark?.topPerformers || 'N/A'}/100</p>
-            ${results.benchmark?.message ? `<p>${results.benchmark.message}</p>` : ''}
-            ${results.insights ? `<h4>Strategic Insights:</h4><p>${results.insights}</p>` : ''}
-        `;
-    } else if (toolName === 'Learning Path Generator') {
-        resultsSection = `
-            <h3>Your Personalized Learning Path</h3>
-            <h4>Curriculum:</h4>
-            ${results.curriculum ? results.curriculum.map(item => `
-                <div style="margin-bottom: 15px;">
-                    <strong>${item.topic}</strong><br>
-                    <em>${item.focus}</em><br>
-                    Resources: ${item.resources}
-                </div>
-            `).join('') : ''}
-            <h4>Timeline:</h4>
-            ${results.timeline ? results.timeline.map(item => {
-                const topics = Array.isArray(item.topics) ? item.topics.join(', ') : (item.topic || '');
-                const projects = item.projects ? ` | Projects: ${item.projects}` : '';
-                const hours = item.hours ? ` | ${item.hours} hours/week` : '';
-                return `<p><strong>Week ${item.week}:</strong> ${topics} - ${item.description || ''}${projects}${hours}</p>`;
-            }).join('') : ''}
-            <h4>Milestones:</h4>
-            <ul>${results.milestones ? results.milestones.map(m => `<li>${m}</li>`).join('') : ''}</ul>
-        `;
-    } else if (toolName === 'Job Skills Translator') {
-        resultsSection = `
-            <h3>Your Career Transformation Analysis</h3>
-            <h4>How AI Will Transform Your Role:</h4>
-            <ul>${results.transformations ? results.transformations.map(t => `<li>${t}</li>`).join('') : ''}</ul>
-            <h4>Transferable Skills:</h4>
-            <ul>${results.transferableSkills ? results.transferableSkills.map(s => `<li>${s}</li>`).join('') : ''}</ul>
-            <h4>New Skills Needed:</h4>
-            <p><strong>Technical:</strong> ${results.newSkills?.technical ? results.newSkills.technical.join(', ') : ''}</p>
-            <p><strong>Soft Skills:</strong> ${results.newSkills?.soft ? results.newSkills.soft.join(', ') : ''}</p>
-            <h4>Career Transition Options:</h4>
-            ${results.careerOptions ? results.careerOptions.map(opt => `
-                <div style="margin-bottom: 15px;">
-                    <strong>${opt.title}</strong><br>
-                    ${opt.description}<br>
-                    <em>Path: ${opt.path}</em>
-                </div>
-            `).join('') : ''}
-            <h4>Immediate Upskilling Plan:</h4>
-            <ul>${results.upskillingPlan ? results.upskillingPlan.map(step => `<li>${step}</li>`).join('') : ''}</ul>
-        `;
-    }
-    
-    return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background: linear-gradient(135deg, #00A8DF 0%, #22A599 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-                .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-                .cta { background: #00A8DF; color: white; padding: 15px; text-align: center; border-radius: 10px; margin: 20px 0; }
-                .cta a { color: white; text-decoration: none; font-weight: bold; }
-                .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>AI Association | ICAN 2026</h1>
-                </div>
-                <div class="content">
-                    <p>Dear User,</p>
-                    <p>Thank you for using our <strong>${toolName}</strong> tool. Below are your personalized results:</p>
-                    ${resultsSection}
-                    <div class="cta">
-                        <h3>Join AI Association Today!</h3>
-                        <p>Become a member and access exclusive resources, networking opportunities, and stay updated with the latest in AI.</p>
-                        <p><a href="https://aia.org.sa">Visit our website: https://aia.org.sa</a></p>
-                    </div>
-                    <p>Best regards,<br>AI Association Team</p>
-                </div>
-                <div class="footer">
-                    <p>AI Association | ICAN 2026 Conference | Interactive AI Tools Platform</p>
-                </div>
-            </div>
-        </body>
-        </html>
-    `;
-}
-
-function formatEmailContentArabic(toolName, results) {
-    let resultsSection = '';
-    
-    if (toolName === 'محلل فجوات المهارات' || toolName === 'AI Skills Gap Analyzer') {
-        resultsSection = `
-            <h3>نتائج تقييمك</h3>
-            <p><strong>نقاط الجاهزية:</strong> ${results.readinessScore}/100</p>
-            <h4>الفجوات ذات الأولوية:</h4>
-            <ul>${results.priorityGaps.map(gap => `<li>${gap}</li>`).join('')}</ul>
-            <h4>خارطة طريق العمل:</h4>
-            <ul>${results.roadmap.map(step => `<li>${step}</li>`).join('')}</ul>
-            <h4>معيار الصناعة:</h4>
-            <p>نقاطك: ${results.readinessScore}/100 | متوسط الصناعة: ${results.benchmark?.industryAvg || 'غير متاح'}/100 | أفضل الأداء: ${results.benchmark?.topPerformers || 'غير متاح'}/100</p>
-            ${results.benchmark?.message ? `<p>${results.benchmark.message}</p>` : ''}
-            ${results.insights ? `<h4>الرؤى الاستراتيجية:</h4><p>${results.insights}</p>` : ''}
-        `;
-    } else if (toolName === 'مولد مسار التعلم' || toolName === 'Learning Path Generator') {
-        resultsSection = `
-            <h3>مسار التعلم المخصص الخاص بك</h3>
-            <h4>المنهج:</h4>
-            ${results.curriculum ? results.curriculum.map(item => `
-                <div style="margin-bottom: 15px;">
-                    <strong>${item.topic}</strong><br>
-                    <em>${item.focus}</em><br>
-                    الموارد: ${item.resources}
-                </div>
-            `).join('') : ''}
-            <h4>الجدول الزمني:</h4>
-            ${results.timeline ? results.timeline.map(item => {
-                const topics = Array.isArray(item.topics) ? item.topics.join(', ') : (item.topic || '');
-                const projects = item.projects ? ` | المشاريع: ${item.projects}` : '';
-                const hours = item.hours ? ` | ${item.hours} ساعة/أسبوع` : '';
-                return `<p><strong>الأسبوع ${item.week}:</strong> ${topics} - ${item.description || ''}${projects}${hours}</p>`;
-            }).join('') : ''}
-            <h4>المعالم:</h4>
-            <ul>${results.milestones ? results.milestones.map(m => `<li>${m}</li>`).join('') : ''}</ul>
-        `;
-    } else if (toolName === 'مترجم مهارات الوظائف' || toolName === 'Job Skills Translator') {
-        resultsSection = `
-            <h3>تحليل تحول مسيرتك المهنية</h3>
-            <h4>كيف سيحول الذكاء الاصطناعي دورك:</h4>
-            <ul>${results.transformations ? results.transformations.map(t => `<li>${t}</li>`).join('') : ''}</ul>
-            <h4>المهارات القابلة للنقل:</h4>
-            <ul>${results.transferableSkills ? results.transferableSkills.map(s => `<li>${s}</li>`).join('') : ''}</ul>
-            <h4>المهارات الجديدة المطلوبة:</h4>
-            <p><strong>تقنية:</strong> ${results.newSkills?.technical ? results.newSkills.technical.join(', ') : ''}</p>
-            <p><strong>المهارات الشخصية:</strong> ${results.newSkills?.soft ? results.newSkills.soft.join(', ') : ''}</p>
-            <h4>خيارات الانتقال المهني:</h4>
-            ${results.careerOptions ? results.careerOptions.map(opt => `
-                <div style="margin-bottom: 15px;">
-                    <strong>${opt.title}</strong><br>
-                    ${opt.description}<br>
-                    <em>المسار: ${opt.path}</em>
-                </div>
-            `).join('') : ''}
-            <h4>خطة التطوير الفورية:</h4>
-            <ul>${results.upskillingPlan ? results.upskillingPlan.map(step => `<li>${step}</li>`).join('') : ''}</ul>
-        `;
-    }
-    
-    return `
-        <!DOCTYPE html>
-        <html dir="rtl" lang="ar">
-        <head>
-            <meta charset="UTF-8">
-            <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; direction: rtl; }
-                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background: linear-gradient(135deg, #00A8DF 0%, #22A599 100%); color: white; padding: 20px; text-align: center; border-radius: 10px 10px 0 0; }
-                .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
-                .cta { background: #00A8DF; color: white; padding: 15px; text-align: center; border-radius: 10px; margin: 20px 0; }
-                .cta a { color: white; text-decoration: none; font-weight: bold; }
-                .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>جمعية الذكاء الاصطناعي | ICAN 2026</h1>
-                </div>
-                <div class="content">
-                    <p>عزيزي المستخدم،</p>
-                    <p>شكراً لاستخدامك أداة <strong>${toolName}</strong>. فيما يلي نتائجك المخصصة:</p>
-                    ${resultsSection}
-                    <div class="cta">
-                        <h3>انضم إلى جمعية الذكاء الاصطناعي اليوم!</h3>
-                        <p>كن عضواً واحصل على موارد حصرية وفرص التواصل وابق على اطلاع بآخر أخبار الذكاء الاصطناعي.</p>
-                        <p><a href="https://aia.org.sa">زر موقعنا: https://aia.org.sa</a></p>
-                    </div>
-                    <p>مع أطيب التحيات،<br>فريق جمعية الذكاء الاصطناعي</p>
-                </div>
-                <div class="footer">
-                    <p>جمعية الذكاء الاصطناعي | مؤتمر ICAN 2026 | منصة أدوات الذكاء الاصطناعي التفاعلية</p>
-                </div>
-            </div>
-        </body>
-        </html>
-    `;
 }
 
 app.listen(PORT, () => {
     console.log(`AI Association Platform API server running on port ${PORT}`);
     console.log(`Using Google Gemini AI`);
     console.log(`Make sure to set GEMINI_API_KEY in your .env file`);
-    console.log(`For email functionality, set EMAIL_USER and EMAIL_PASS in your .env file`);
 });
 
