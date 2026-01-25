@@ -1994,7 +1994,7 @@ app.post('/api/send-results-email', async (req, res) => {
         
         // Try sending with primary configuration
         let info;
-        let lastError;
+        let triedBothPorts = false; // Track if we tried both ports (for error message)
         
         try {
             const sendPromise = transporter.sendMail(mailOptions);
@@ -2004,14 +2004,13 @@ app.post('/api/send-results-email', async (req, res) => {
             
             info = await Promise.race([sendPromise, timeoutPromise]);
         } catch (firstError) {
-            lastError = firstError;
-            
             // If timeout and we have SMTP config, try port 465 (SSL) as fallback
             if (firstError.message.includes('timeout') && 
                 hasSMTPConfig &&
                 process.env.SMTP_PORT !== '465') {
                 
                 console.log('Primary connection timed out. Trying alternative port 465 (SSL)...');
+                triedBothPorts = true; // Mark that we're trying both ports
                 
                 try {
                     // Create alternative transporter with SSL
@@ -2036,7 +2035,8 @@ app.post('/api/send-results-email', async (req, res) => {
                     info = await Promise.race([altSendPromise, altTimeoutPromise]);
                     console.log('Successfully sent using alternative port 465');
                 } catch (altError) {
-                    lastError = altError;
+                    // Both ports failed - Railway is blocking SMTP
+                    triedBothPorts = true;
                     throw altError;
                 }
             } else {
@@ -2066,7 +2066,7 @@ app.post('/api/send-results-email', async (req, res) => {
         let userMessage;
         if (error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
             // Check if both ports failed (indicates Railway is blocking SMTP)
-            const triedBothPorts = process.env.SMTP_PORT === '587' && lastError && lastError.message.includes('timeout');
+            // triedBothPorts is set to true if we attempted port 465 after 587 failed
             if (triedBothPorts || (error.message.includes('timeout') && process.env.SMTP_PORT === '465')) {
                 userMessage = req.body.language === 'ar' 
                     ? 'Railway يمنع اتصالات SMTP. لا يمكن إرسال البريد الإلكتروني من Railway. يرجى استخدام منصة أخرى أو خدمة بريد بديلة.'
