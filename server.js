@@ -2065,9 +2065,17 @@ app.post('/api/send-results-email', async (req, res) => {
         // Provide more specific error messages
         let userMessage;
         if (error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
-            userMessage = req.body.language === 'ar' 
-                ? 'انتهت مهلة الاتصال بخادم البريد. قد تكون Railway تمنع اتصالات SMTP. جرب تغيير المنفذ إلى 465 (SSL) أو استخدم خدمة بريد أخرى.'
-                : 'Connection timeout. Railway may be blocking SMTP connections. Try changing the port to 465 (SSL) or use a different email service.';
+            // Check if both ports failed (indicates Railway is blocking SMTP)
+            const triedBothPorts = process.env.SMTP_PORT === '587' && lastError && lastError.message.includes('timeout');
+            if (triedBothPorts || (error.message.includes('timeout') && process.env.SMTP_PORT === '465')) {
+                userMessage = req.body.language === 'ar' 
+                    ? 'Railway يمنع اتصالات SMTP. لا يمكن إرسال البريد الإلكتروني من Railway. يرجى استخدام منصة أخرى أو خدمة بريد بديلة.'
+                    : 'Railway is blocking SMTP connections. Email cannot be sent from Railway. Please use a different platform or alternative email service.';
+            } else {
+                userMessage = req.body.language === 'ar' 
+                    ? 'انتهت مهلة الاتصال بخادم البريد. قد تكون Railway تمنع اتصالات SMTP. جرب تغيير المنفذ إلى 465 (SSL) أو استخدم خدمة بريد أخرى.'
+                    : 'Connection timeout. Railway may be blocking SMTP connections. Try changing the port to 465 (SSL) or use a different email service.';
+            }
         } else if (error.code === 'EAUTH') {
             userMessage = req.body.language === 'ar'
                 ? 'فشل المصادقة. يرجى التحقق من اسم المستخدم وكلمة المرور.'

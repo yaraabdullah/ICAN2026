@@ -1,6 +1,40 @@
 # Railway Email Configuration Guide
 
-This guide explains how to configure email sending for your AI Association Platform deployed on Railway using your own SMTP server.
+⚠️ **IMPORTANT LIMITATION**: Railway **blocks outbound SMTP connections** on both port 587 (TLS) and 465 (SSL). This is a platform-wide restriction to prevent spam. **Email sending via SMTP will not work on Railway.**
+
+## Alternative Solutions
+
+Since Railway blocks SMTP, you have these options:
+
+### Option 1: Use a Different Deployment Platform
+Deploy to a platform that allows SMTP:
+- **Heroku** - Allows SMTP with proper configuration
+- **DigitalOcean App Platform** - Supports SMTP
+- **AWS Elastic Beanstalk** - Full SMTP support
+- **Google Cloud Run** - Supports SMTP
+- **VPS/Server** - Full control over network settings
+
+### Option 2: Use Railway's Email Service (If Available)
+Check if Railway offers an email plugin or service:
+1. Go to your Railway project dashboard
+2. Look for "Plugins" or "Add Service"
+3. Search for email-related services
+4. Contact Railway support to ask about email options
+
+### Option 3: Use an API-Based Email Service
+While you mentioned not wanting third-party services, Railway's SMTP blocking makes this necessary. Consider:
+- **Resend** - Simple API, good free tier
+- **Postmark** - Reliable transactional email
+- **Mailgun** - SMTP or API options
+
+### Option 4: Disable Email Feature
+If email is not critical, you can disable the email sending feature and users can copy/save results manually.
+
+---
+
+## SMTP Configuration (For Other Platforms)
+
+If you deploy to a platform that **does** support SMTP, use this guide:
 
 ## Custom SMTP Configuration (Recommended)
 
@@ -158,27 +192,25 @@ After deployment:
 
 ### Common Errors:
 
-**"Connection timeout" (ETIMEDOUT)**
-This is the most common issue on Railway. Possible causes:
-- **Railway network restrictions**: Some Railway regions may block outbound SMTP connections
-- **SMTP server blocking Railway IPs**: Your email provider may be blocking Railway's IP addresses
-- **Incorrect SMTP host/port**: Double-check your SMTP settings
-- **Firewall rules**: Your SMTP server may require whitelisting Railway IPs
+**"Connection timeout" (ETIMEDOUT) - Railway Blocks SMTP**
+
+⚠️ **Railway blocks all outbound SMTP connections** (ports 587, 465, and 25). This is a platform-wide restriction and cannot be bypassed.
+
+**Confirmed**: If you get timeouts on both port 587 and 465, Railway is blocking SMTP entirely.
 
 **Solutions:**
-1. **Verify SMTP settings** - Make sure `SMTP_HOST` and `SMTP_PORT` are correct
-2. **Try different ports**:
-   - Port 587 (TLS) - Most common
-   - Port 465 (SSL) - Alternative
-   - Port 25 - Sometimes used (may be blocked)
-3. **Check with your email provider**:
-   - Ask if they block connections from cloud providers
-   - Request to whitelist Railway's IP ranges (if possible)
-   - Verify if your account allows SMTP access
-4. **Use a different email service**:
-   - Some providers (like Gmail, Office 365) work better with cloud platforms
-   - Consider using a dedicated email service that supports cloud deployments
-5. **Enable debug mode** - Add `SMTP_DEBUG=true` to see detailed connection logs
+1. **Deploy to a different platform** that allows SMTP:
+   - Heroku
+   - DigitalOcean App Platform
+   - AWS Elastic Beanstalk
+   - Google Cloud Run
+   - Any VPS/server
+
+2. **Contact Railway Support** to confirm SMTP blocking and ask about alternatives
+
+3. **Use Railway's email plugin** (if available) - Check Railway dashboard for email services
+
+4. **Disable email feature** - Remove or hide the email sending functionality if not critical
 
 **"Authentication failed"**
 - Verify `SMTP_USER` and `SMTP_PASS` are correct
