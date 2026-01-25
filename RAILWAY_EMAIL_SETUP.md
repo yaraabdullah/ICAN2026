@@ -2,9 +2,26 @@
 
 ⚠️ **IMPORTANT LIMITATION**: Railway **blocks outbound SMTP connections** on both port 587 (TLS) and 465 (SSL). This is a platform-wide restriction to prevent spam. **Email sending via SMTP will not work on Railway.**
 
+## ✅ Recommended Solution: Resend API
+
+**Resend is the best option for Railway** - it uses an API (not SMTP), so Railway doesn't block it.
+
+### Quick Setup:
+1. Sign up at [Resend](https://resend.com/) (free: 3,000 emails/month)
+2. Get your API key from Resend dashboard
+3. Add to Railway environment variables:
+   ```
+   RESEND_API_KEY=re_your_api_key_here
+   RESEND_FROM=noreply@yourdomain.com
+   ```
+
+**See [RESEND_SETUP.md](./RESEND_SETUP.md) for detailed instructions.**
+
+---
+
 ## Alternative Solutions
 
-Since Railway blocks SMTP, you have these options:
+If you don't want to use Resend, you have these options:
 
 ### Option 1: Use a Different Deployment Platform
 Deploy to a platform that allows SMTP:

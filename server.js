@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 require('dotenv').config();
 
 const app = express();
@@ -1943,7 +1944,46 @@ app.post('/api/send-results-email', async (req, res) => {
             });
         }
         
-        // Create email transporter
+        // Format email content
+        const htmlContent = formatEmailContent(toolName, results, language || 'en');
+        const subject = `${toolName} - ${language === 'ar' ? 'نتائج التحليل' : 'Analysis Results'}`;
+        
+        // Determine "from" email address
+        let fromEmail = process.env.RESEND_FROM || process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.GMAIL_USER || 'noreply@ai-association.com';
+        
+        console.log('Attempting to send email to:', email);
+        
+        // Priority 1: Use Resend API (works on Railway, no SMTP blocking)
+        if (process.env.RESEND_API_KEY) {
+            console.log('Using Resend API for email sending');
+            
+            try {
+                const resend = new Resend(process.env.RESEND_API_KEY);
+                
+                const { data, error: resendError } = await resend.emails.send({
+                    from: fromEmail,
+                    to: email,
+                    subject: subject,
+                    html: htmlContent
+                });
+                
+                if (resendError) {
+                    throw new Error(resendError.message || 'Resend API error');
+                }
+                
+                console.log('Email sent successfully via Resend. Message ID:', data?.id);
+                return res.json({
+                    success: true,
+                    message: 'Email sent successfully',
+                    messageId: data?.id
+                });
+            } catch (resendError) {
+                console.error('Resend API error:', resendError);
+                throw resendError;
+            }
+        }
+        
+        // Priority 2: Use SMTP (may be blocked on Railway)
         let transporter = createEmailTransporter();
         
         // If no email config, use a test account (for development)
@@ -1962,34 +2002,23 @@ app.post('/api/send-results-email', async (req, res) => {
             console.log('Using Ethereal test account for email. Check: https://ethereal.email');
         }
         
-        // Format email content
-        const htmlContent = formatEmailContent(toolName, results, language || 'en');
-        
-        // Determine "from" email address based on configured service
-        let fromEmail = process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.GMAIL_USER || 'noreply@ai-association.com';
-        
         // Email options
         const mailOptions = {
             from: fromEmail,
             to: email,
-            subject: `${toolName} - ${language === 'ar' ? 'نتائج التحليل' : 'Analysis Results'}`,
+            subject: subject,
             html: htmlContent
         };
-        
-        // Send email with timeout and retry logic
-        console.log('Attempting to send email to:', email);
         
         // Check if we have proper SMTP configuration
         const hasSMTPConfig = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
         if (hasSMTPConfig) {
+            console.log('Using SMTP for email sending');
             console.log('SMTP Host:', process.env.SMTP_HOST);
             console.log('SMTP Port:', process.env.SMTP_PORT || '587');
             console.log('SMTP User:', process.env.SMTP_USER.substring(0, 5) + '***');
         } else {
             console.log('SMTP not fully configured - using test account');
-            console.log('SMTP Host:', process.env.SMTP_HOST || 'Not configured');
-            console.log('SMTP User:', process.env.SMTP_USER ? '***configured***' : 'Not configured');
-            console.log('SMTP Pass:', process.env.SMTP_PASS ? '***configured***' : 'Not configured');
         }
         
         // Try sending with primary configuration
@@ -2069,8 +2098,8 @@ app.post('/api/send-results-email', async (req, res) => {
             // triedBothPorts is set to true if we attempted port 465 after 587 failed
             if (triedBothPorts || (error.message.includes('timeout') && process.env.SMTP_PORT === '465')) {
                 userMessage = req.body.language === 'ar' 
-                    ? 'Railway يمنع اتصالات SMTP. لا يمكن إرسال البريد الإلكتروني من Railway. يرجى استخدام منصة أخرى أو خدمة بريد بديلة.'
-                    : 'Railway is blocking SMTP connections. Email cannot be sent from Railway. Please use a different platform or alternative email service.';
+                    ? 'Railway يمنع اتصالات SMTP. يرجى استخدام Resend API بدلاً من SMTP.'
+                    : 'Railway is blocking SMTP connections. Please use Resend API instead of SMTP.';
             } else {
                 userMessage = req.body.language === 'ar' 
                     ? 'انتهت مهلة الاتصال بخادم البريد. قد تكون Railway تمنع اتصالات SMTP. جرب تغيير المنفذ إلى 465 (SSL) أو استخدم خدمة بريد أخرى.'
@@ -2105,13 +2134,17 @@ app.listen(PORT, () => {
     console.log(`Make sure to set GEMINI_API_KEY in your .env file`);
     
     // Check email configuration
-    const hasEmailConfig = process.env.SMTP_USER || process.env.GMAIL_USER;
-    if (!hasEmailConfig) {
-        console.log(`Email: Using test account (Ethereal). For production, configure:`);
-        console.log(`  - SMTP_HOST + SMTP_USER + SMTP_PASS + EMAIL_FROM (recommended)`);
-        console.log(`  - GMAIL_USER + GMAIL_APP_PASSWORD + EMAIL_FROM (for testing)`);
+    if (process.env.RESEND_API_KEY) {
+        console.log(`Email: Resend API configured (recommended for Railway)`);
+        console.log(`  From: ${process.env.RESEND_FROM || process.env.EMAIL_FROM || 'Not set'}`);
+    } else if (process.env.SMTP_USER || process.env.GMAIL_USER) {
+        console.log(`Email: SMTP configuration detected`);
+        console.log(`  Note: Railway may block SMTP. Consider using Resend API instead.`);
     } else {
-        console.log(`Email: Configuration detected`);
+        console.log(`Email: Using test account (Ethereal). For production, configure:`);
+        console.log(`  - RESEND_API_KEY + RESEND_FROM (recommended for Railway)`);
+        console.log(`  - SMTP_HOST + SMTP_USER + SMTP_PASS + EMAIL_FROM`);
+        console.log(`  - GMAIL_USER + GMAIL_APP_PASSWORD + EMAIL_FROM`);
     }
 });
 
