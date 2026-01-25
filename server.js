@@ -21,38 +21,68 @@ function extractJSON(text) {
         return null;
     }
     
-    // Remove markdown code blocks
-    text = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+    // Remove markdown code blocks more aggressively
+    // Handle ```json, ```JSON, ```, and any whitespace
+    text = text.replace(/```\s*json\s*/gi, '').replace(/```\s*/g, '').trim();
     
-    // Try to find JSON object in the text
-    // Look for { ... } pattern
+    // Remove any leading/trailing whitespace and newlines
+    text = text.trim();
+    
+    // Try to find JSON object in the text - look for { ... } pattern
+    // Use a more robust regex that handles nested braces
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
+        let jsonText = jsonMatch[0];
+        
+        // Try to balance braces - find the last complete }
+        let braceCount = 0;
+        let lastValidBrace = -1;
+        for (let i = 0; i < jsonText.length; i++) {
+            if (jsonText[i] === '{') braceCount++;
+            if (jsonText[i] === '}') {
+                braceCount--;
+                if (braceCount === 0) {
+                    lastValidBrace = i;
+                }
+            }
+        }
+        
+        if (lastValidBrace > 0) {
+            jsonText = jsonText.substring(0, lastValidBrace + 1);
+        }
+        
         try {
-            return JSON.parse(jsonMatch[0]);
+            return JSON.parse(jsonText);
         } catch (e) {
             // If that fails, try cleaning it more
+            console.log('First parse attempt failed, trying cleaned version...');
         }
     }
     
-    // Try parsing the whole text
+    // Try to extract just the JSON part - remove any text before first { and after last }
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        try {
+            const jsonText = text.substring(firstBrace, lastBrace + 1);
+            return JSON.parse(jsonText);
+        } catch (e2) {
+            // Still failed, log for debugging
+            console.error('Failed to parse JSON. First 500 chars:', text.substring(0, 500));
+            console.error('Parse error:', e2.message);
+            console.error('Error at position:', e2.message.match(/position (\d+)/)?.[1] || 'unknown');
+            if (e2.message.includes('position')) {
+                const pos = parseInt(e2.message.match(/position (\d+)/)?.[1] || '0');
+                console.error('Context around error:', text.substring(Math.max(0, pos - 50), pos + 50));
+            }
+            return null;
+        }
+    }
+    
+    // Last attempt: try parsing the whole text
     try {
         return JSON.parse(text);
     } catch (e) {
-        // If that fails, try to extract just the JSON part
-        // Remove any text before first { and after last }
-        const firstBrace = text.indexOf('{');
-        const lastBrace = text.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            try {
-                return JSON.parse(text.substring(firstBrace, lastBrace + 1));
-            } catch (e2) {
-                // Still failed, log for debugging
-                console.error('Failed to parse JSON. First 500 chars:', text.substring(0, 500));
-                console.error('Parse error:', e2.message);
-                return null;
-            }
-        }
         console.error('Failed to parse JSON. First 500 chars:', text.substring(0, 500));
         console.error('Parse error:', e.message);
         return null;
@@ -1948,9 +1978,19 @@ app.post('/api/send-results-email', async (req, res) => {
         
         // Send email with timeout and retry logic
         console.log('Attempting to send email to:', email);
-        console.log('SMTP Host:', process.env.SMTP_HOST || 'Not configured');
-        console.log('SMTP Port:', process.env.SMTP_PORT || 'Not configured');
-        console.log('SMTP User:', process.env.SMTP_USER ? '***configured***' : 'Not configured');
+        
+        // Check if we have proper SMTP configuration
+        const hasSMTPConfig = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
+        if (hasSMTPConfig) {
+            console.log('SMTP Host:', process.env.SMTP_HOST);
+            console.log('SMTP Port:', process.env.SMTP_PORT || '587');
+            console.log('SMTP User:', process.env.SMTP_USER.substring(0, 5) + '***');
+        } else {
+            console.log('SMTP not fully configured - using test account');
+            console.log('SMTP Host:', process.env.SMTP_HOST || 'Not configured');
+            console.log('SMTP User:', process.env.SMTP_USER ? '***configured***' : 'Not configured');
+            console.log('SMTP Pass:', process.env.SMTP_PASS ? '***configured***' : 'Not configured');
+        }
         
         // Try sending with primary configuration
         let info;
@@ -1966,11 +2006,10 @@ app.post('/api/send-results-email', async (req, res) => {
         } catch (firstError) {
             lastError = firstError;
             
-            // If timeout and using Office 365, try port 465 (SSL) as fallback
+            // If timeout and we have SMTP config, try port 465 (SSL) as fallback
             if (firstError.message.includes('timeout') && 
-                process.env.SMTP_HOST && 
-                process.env.SMTP_HOST.includes('office365.com') &&
-                process.env.SMTP_PORT === '587') {
+                hasSMTPConfig &&
+                process.env.SMTP_PORT !== '465') {
                 
                 console.log('Primary connection timed out. Trying alternative port 465 (SSL)...');
                 
