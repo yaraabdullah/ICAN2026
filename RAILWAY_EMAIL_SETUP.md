@@ -201,15 +201,40 @@ This is the most common issue on Railway. Possible causes:
 
 ### Railway-Specific Issues
 
-**Railway may block outbound SMTP connections** in some cases. If you continue to get timeout errors:
+**⚠️ IMPORTANT: Railway may block outbound SMTP connections on port 587 (TLS).** This is a common limitation with cloud platforms to prevent spam.
 
-1. **Check Railway Status**: Visit Railway's status page to see if there are known issues
-2. **Try Different SMTP Provider**: Some providers work better with Railway:
-   - Gmail/Google Workspace (with App Password)
-   - Office 365 / Microsoft 365
-   - Dedicated email services designed for cloud platforms
-3. **Contact Railway Support**: If SMTP is critical, contact Railway support to verify SMTP access
-4. **Use Alternative Ports**: Try port 465 (SSL) if 587 (TLS) doesn't work
+### If you get "Connection timeout" errors:
+
+1. **Try Port 465 (SSL) instead of 587 (TLS)**:
+   ```
+   SMTP_PORT=465
+   SMTP_SECURE=true
+   ```
+   The code will automatically try port 465 if 587 times out, but you can set it directly.
+
+2. **Verify Railway allows SMTP**:
+   - Railway may block outbound SMTP on certain ports
+   - Port 465 (SSL) is sometimes allowed when 587 (TLS) is blocked
+   - Check Railway's documentation or support for SMTP restrictions
+
+3. **Alternative Solutions**:
+   - **Use Gmail/Google Workspace**: Often works better with cloud platforms
+   - **Use Office 365 with port 465**: Try SSL instead of TLS
+   - **Contact Railway Support**: Ask if SMTP is blocked and what alternatives they recommend
+   - **Use Railway Email Plugin**: Check if Railway has an email service/plugin
+
+4. **Test Connection Locally First**:
+   - Test your SMTP settings locally before deploying to Railway
+   - This helps identify if it's a Railway-specific issue
+
+### Why Railway Blocks SMTP:
+
+Many cloud platforms block outbound SMTP (especially port 587) to:
+- Prevent spam and abuse
+- Comply with email security policies
+- Reduce network abuse
+
+**Solution**: Use port 465 (SSL) or contact Railway support for SMTP access.
 
 ### Debug Mode
 

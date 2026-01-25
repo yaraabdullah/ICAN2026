@@ -1946,17 +1946,64 @@ app.post('/api/send-results-email', async (req, res) => {
             html: htmlContent
         };
         
-        // Send email with timeout
+        // Send email with timeout and retry logic
         console.log('Attempting to send email to:', email);
         console.log('SMTP Host:', process.env.SMTP_HOST || 'Not configured');
         console.log('SMTP Port:', process.env.SMTP_PORT || 'Not configured');
+        console.log('SMTP User:', process.env.SMTP_USER ? '***configured***' : 'Not configured');
         
-        const sendPromise = transporter.sendMail(mailOptions);
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Email sending timeout after 30 seconds')), 30000);
-        });
+        // Try sending with primary configuration
+        let info;
+        let lastError;
         
-        const info = await Promise.race([sendPromise, timeoutPromise]);
+        try {
+            const sendPromise = transporter.sendMail(mailOptions);
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Email sending timeout after 30 seconds')), 30000);
+            });
+            
+            info = await Promise.race([sendPromise, timeoutPromise]);
+        } catch (firstError) {
+            lastError = firstError;
+            
+            // If timeout and using Office 365, try port 465 (SSL) as fallback
+            if (firstError.message.includes('timeout') && 
+                process.env.SMTP_HOST && 
+                process.env.SMTP_HOST.includes('office365.com') &&
+                process.env.SMTP_PORT === '587') {
+                
+                console.log('Primary connection timed out. Trying alternative port 465 (SSL)...');
+                
+                try {
+                    // Create alternative transporter with SSL
+                    const altTransporter = nodemailer.createTransport({
+                        host: process.env.SMTP_HOST,
+                        port: 465,
+                        secure: true, // SSL
+                        auth: {
+                            user: process.env.SMTP_USER,
+                            pass: process.env.SMTP_PASS
+                        },
+                        connectionTimeout: 10000,
+                        greetingTimeout: 5000,
+                        socketTimeout: 10000
+                    });
+                    
+                    const altSendPromise = altTransporter.sendMail(mailOptions);
+                    const altTimeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('Email sending timeout after 30 seconds')), 30000);
+                    });
+                    
+                    info = await Promise.race([altSendPromise, altTimeoutPromise]);
+                    console.log('Successfully sent using alternative port 465');
+                } catch (altError) {
+                    lastError = altError;
+                    throw altError;
+                }
+            } else {
+                throw firstError;
+            }
+        }
         
         // If using test account (Ethereal), log the preview URL
         const hasEmailConfig = process.env.SMTP_USER || process.env.GMAIL_USER;
@@ -1980,8 +2027,8 @@ app.post('/api/send-results-email', async (req, res) => {
         let userMessage;
         if (error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
             userMessage = req.body.language === 'ar' 
-                ? 'انتهت مهلة الاتصال بخادم البريد. يرجى التحقق من إعدادات SMTP أو المحاولة مرة أخرى.'
-                : 'Connection timeout. Please check your SMTP settings or try again.';
+                ? 'انتهت مهلة الاتصال بخادم البريد. قد تكون Railway تمنع اتصالات SMTP. جرب تغيير المنفذ إلى 465 (SSL) أو استخدم خدمة بريد أخرى.'
+                : 'Connection timeout. Railway may be blocking SMTP connections. Try changing the port to 465 (SSL) or use a different email service.';
         } else if (error.code === 'EAUTH') {
             userMessage = req.body.language === 'ar'
                 ? 'فشل المصادقة. يرجى التحقق من اسم المستخدم وكلمة المرور.'
