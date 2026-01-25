@@ -1637,10 +1637,17 @@ const createEmailTransporter = () => {
                 user: process.env.SMTP_USER,
                 pass: process.env.SMTP_PASS
             },
+            // Connection timeout settings
+            connectionTimeout: 10000, // 10 seconds
+            greetingTimeout: 5000, // 5 seconds
+            socketTimeout: 10000, // 10 seconds
             // Additional options for better compatibility
             tls: {
                 rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED !== 'false'
-            }
+            },
+            // Debug mode (set SMTP_DEBUG=true to enable)
+            debug: process.env.SMTP_DEBUG === 'true',
+            logger: process.env.SMTP_DEBUG === 'true'
         });
     }
     
@@ -1939,8 +1946,17 @@ app.post('/api/send-results-email', async (req, res) => {
             html: htmlContent
         };
         
-        // Send email
-        const info = await transporter.sendMail(mailOptions);
+        // Send email with timeout
+        console.log('Attempting to send email to:', email);
+        console.log('SMTP Host:', process.env.SMTP_HOST || 'Not configured');
+        console.log('SMTP Port:', process.env.SMTP_PORT || 'Not configured');
+        
+        const sendPromise = transporter.sendMail(mailOptions);
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Email sending timeout after 30 seconds')), 30000);
+        });
+        
+        const info = await Promise.race([sendPromise, timeoutPromise]);
         
         // If using test account (Ethereal), log the preview URL
         const hasEmailConfig = process.env.SMTP_USER || process.env.GMAIL_USER;
@@ -1948,6 +1964,7 @@ app.post('/api/send-results-email', async (req, res) => {
             console.log('Preview URL: %s', nodemailer.getTestMessageUrl(info));
         }
         
+        console.log('Email sent successfully. Message ID:', info.messageId);
         res.json({
             success: true,
             message: 'Email sent successfully',
@@ -1956,12 +1973,34 @@ app.post('/api/send-results-email', async (req, res) => {
         
     } catch (error) {
         console.error('Error sending email:', error);
+        console.error('Error code:', error.code);
+        console.error('Error command:', error.command);
+        
+        // Provide more specific error messages
+        let userMessage;
+        if (error.code === 'ETIMEDOUT' || error.message.includes('timeout')) {
+            userMessage = req.body.language === 'ar' 
+                ? 'انتهت مهلة الاتصال بخادم البريد. يرجى التحقق من إعدادات SMTP أو المحاولة مرة أخرى.'
+                : 'Connection timeout. Please check your SMTP settings or try again.';
+        } else if (error.code === 'EAUTH') {
+            userMessage = req.body.language === 'ar'
+                ? 'فشل المصادقة. يرجى التحقق من اسم المستخدم وكلمة المرور.'
+                : 'Authentication failed. Please check your username and password.';
+        } else if (error.code === 'ECONNREFUSED') {
+            userMessage = req.body.language === 'ar'
+                ? 'تم رفض الاتصال. يرجى التحقق من عنوان SMTP والمنفذ.'
+                : 'Connection refused. Please check your SMTP host and port.';
+        } else {
+            userMessage = req.body.language === 'ar' 
+                ? 'فشل إرسال البريد الإلكتروني. يرجى المحاولة مرة أخرى.' 
+                : 'Failed to send email. Please try again.';
+        }
+        
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to send email',
-            userMessage: req.body.language === 'ar' 
-                ? 'فشل إرسال البريد الإلكتروني. يرجى المحاولة مرة أخرى.' 
-                : 'Failed to send email. Please try again.'
+            errorCode: error.code,
+            userMessage: userMessage
         });
     }
 });

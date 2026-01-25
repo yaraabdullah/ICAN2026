@@ -158,10 +158,27 @@ After deployment:
 
 ### Common Errors:
 
-**"Connection timeout"**
-- Check `SMTP_HOST` is correct
-- Verify the SMTP server allows connections from Railway's IPs
-- Try a different port (587 vs 465)
+**"Connection timeout" (ETIMEDOUT)**
+This is the most common issue on Railway. Possible causes:
+- **Railway network restrictions**: Some Railway regions may block outbound SMTP connections
+- **SMTP server blocking Railway IPs**: Your email provider may be blocking Railway's IP addresses
+- **Incorrect SMTP host/port**: Double-check your SMTP settings
+- **Firewall rules**: Your SMTP server may require whitelisting Railway IPs
+
+**Solutions:**
+1. **Verify SMTP settings** - Make sure `SMTP_HOST` and `SMTP_PORT` are correct
+2. **Try different ports**:
+   - Port 587 (TLS) - Most common
+   - Port 465 (SSL) - Alternative
+   - Port 25 - Sometimes used (may be blocked)
+3. **Check with your email provider**:
+   - Ask if they block connections from cloud providers
+   - Request to whitelist Railway's IP ranges (if possible)
+   - Verify if your account allows SMTP access
+4. **Use a different email service**:
+   - Some providers (like Gmail, Office 365) work better with cloud platforms
+   - Consider using a dedicated email service that supports cloud deployments
+5. **Enable debug mode** - Add `SMTP_DEBUG=true` to see detailed connection logs
 
 **"Authentication failed"**
 - Verify `SMTP_USER` and `SMTP_PASS` are correct
@@ -176,6 +193,32 @@ After deployment:
 - Your SMTP server may require authentication
 - Verify your credentials
 - Some servers require the "from" address to match the authenticated user
+
+**"Connection refused" (ECONNREFUSED)**
+- The SMTP server is not reachable
+- Check if the host and port are correct
+- Verify the SMTP server is running and accessible
+
+### Railway-Specific Issues
+
+**Railway may block outbound SMTP connections** in some cases. If you continue to get timeout errors:
+
+1. **Check Railway Status**: Visit Railway's status page to see if there are known issues
+2. **Try Different SMTP Provider**: Some providers work better with Railway:
+   - Gmail/Google Workspace (with App Password)
+   - Office 365 / Microsoft 365
+   - Dedicated email services designed for cloud platforms
+3. **Contact Railway Support**: If SMTP is critical, contact Railway support to verify SMTP access
+4. **Use Alternative Ports**: Try port 465 (SSL) if 587 (TLS) doesn't work
+
+### Debug Mode
+
+To enable detailed SMTP logging, add to Railway environment variables:
+```
+SMTP_DEBUG=true
+```
+
+This will show detailed connection logs in Railway's logs, helping you diagnose the issue.
 
 ### Test Account (Development Only)
 If no email configuration is set, the app will use Ethereal (test account). Check the Railway logs for the preview URL to view test emails.
