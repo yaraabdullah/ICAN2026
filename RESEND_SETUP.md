@@ -14,14 +14,19 @@ Resend is an API-based email service that works perfectly with Railway (no SMTP 
 3. Name it (e.g., "Railway AI Platform")
 4. Copy the API key (starts with `re_`)
 
-### Step 3: Verify Your Domain (Optional but Recommended)
+### Step 3: Verify Your Domain (Required for Production)
+
+**Important**: You must verify your domain in Resend to send emails from your custom domain.
+
 1. Go to **Domains** in Resend dashboard
 2. Click **Add Domain**
-3. Add your domain (e.g., `yourdomain.com`)
-4. Add the DNS records Resend provides to your domain's DNS settings
-5. Wait for verification (usually a few minutes)
+3. Add your domain (e.g., `aia.org.sa`)
+4. Add the DNS records Resend provides to your domain's DNS settings:
+   - **TXT record** for domain verification
+   - **DKIM records** for email authentication
+5. Wait for verification (usually a few minutes to a few hours)
 
-**Note**: You can also use Resend's test domain for testing, but it's limited.
+**For Testing**: If your domain isn't verified yet, the system will automatically fallback to `onboarding@resend.dev` (Resend's test domain). This works for testing but has limitations.
 
 ### Step 4: Add Environment Variables in Railway
 
@@ -35,8 +40,9 @@ RESEND_FROM=noreply@yourdomain.com
 ```
 
 **Important**: 
-- `RESEND_FROM` must be a verified domain in Resend
-- If you haven't verified a domain, you can use Resend's test domain: `onboarding@resend.dev` (for testing only)
+- `RESEND_FROM` should be a verified domain in Resend for production use
+- If your domain isn't verified, the system will automatically use `onboarding@resend.dev` as a fallback
+- For production, verify your domain at https://resend.com/domains
 
 ### Step 5: Redeploy
 
@@ -76,8 +82,11 @@ After deployment:
 
 ### "Domain not verified"
 - The `RESEND_FROM` email domain must be verified in Resend
-- Go to Resend dashboard → Domains to verify
-- Or use `onboarding@resend.dev` for testing (limited)
+- Go to Resend dashboard → Domains to verify your domain
+- Add the DNS records Resend provides to your domain's DNS settings
+- Wait for verification (can take a few minutes to hours)
+- **Automatic Fallback**: The system will automatically use `onboarding@resend.dev` if your domain isn't verified (for testing only)
+- For production, you must verify your domain
 
 ### "Email not received"
 - Check spam folder

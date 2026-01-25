@@ -172,10 +172,10 @@ Format as JSON:
         
         let analysis;
         try {
-            const result = await model.generateContent(fullPrompt);
-            const response = await result.response;
-            let text = response.text();
-            
+        const result = await model.generateContent(fullPrompt);
+        const response = await result.response;
+        let text = response.text();
+        
             // Extract JSON from response
             analysis = extractJSON(text);
             
@@ -468,11 +468,11 @@ Format as JSON:
             console.log('Responsibilities:', responsibilities);
             console.log('Industry:', industry);
             console.log('Language:', lang);
-            
-            const result = await model.generateContent(fullPrompt);
-            const response = await result.response;
-            let text = response.text();
-            
+        
+        const result = await model.generateContent(fullPrompt);
+        const response = await result.response;
+        let text = response.text();
+        
             console.log('=== AI RESPONSE RECEIVED ===');
             console.log('Response length:', text.length);
             console.log('First 200 chars:', text.substring(0, 200));
@@ -948,7 +948,7 @@ Key risks include insufficient executive commitment (${answers[2] < 50 ? 'curren
 function getRoadmap(score, lang = 'en') {
     if (lang === 'ar') {
         if (score < 5) {
-            return [
+        return [
                 "بدء ورش عمل التوعية بالذكاء الاصطناعي للقيادة تتماشى مع رؤية 2030",
                 "إجراء تدقيق للبيانات لتقييم الحالة الحالية",
                 "تحديد 2-3 حالات استخدام للذكاء الاصطناعي سريعة الفوز تتماشى مع الأولويات الوطنية",
@@ -994,12 +994,12 @@ function getRoadmap(score, lang = 'en') {
         if (score < 5) {
             return [
                 "Start with AI awareness workshops for leadership aligned with Vision 2030",
-                "Conduct a data audit to assess current state",
+            "Conduct a data audit to assess current state",
                 "Identify 2-3 quick-win AI use cases aligned with national priorities",
-                "Build a small pilot team with basic AI training"
-            ];
+            "Build a small pilot team with basic AI training"
+        ];
         } else if (score < 25) {
-            return [
+        return [
                 "Develop a formal AI strategy aligned with Vision 2030 and NAII framework",
                 "Identify national AI priorities and align initiatives",
                 "Establish basic organizational structure for AI governance",
@@ -1025,9 +1025,9 @@ function getRoadmap(score, lang = 'en') {
                 "Enable advanced digital services with measurable impact",
                 "Achieve tangible and measurable impact exceeding 20% improvement",
                 "Expand initiatives and evaluate them periodically per National AI Index framework"
-            ];
-        } else {
-            return [
+        ];
+    } else {
+        return [
                 "Achieve national leadership in AI adoption",
                 "Drive continuous innovation and advanced development",
                 "Achieve measurable impact at national level",
@@ -1225,7 +1225,7 @@ function generateFallbackJobAnalysis(jobTitle, responsibilities, industry, lang 
                 transformations.push(`الذكاء الاصطناعي يمكن أن يساعدك في البحث الأكاديمي من خلال تحليل كميات كبيرة من الأوراق العلمية والبحوث في مجال دراستك`);
                 transformations.push(`أدوات الذكاء الاصطناعي يمكنها مساعدتك في تنظيم المعلومات وإنشاء ملخصات للبحوث والمراجع`);
                 transformations.push(`الذكاء الاصطناعي يمكن أن يساعدك في تحليل النصوص والبيانات المتعلقة بمجال دراستك بشكل أسرع وأكثر دقة`);
-            } else {
+    } else {
                 transformations.push(`الذكاء الاصطناعي يمكن أن يساعدك في دراستك من خلال تحليل المواد التعليمية وإنشاء ملخصات ذكية`);
                 transformations.push(`أدوات الذكاء الاصطناعي يمكنها مساعدتك في تنظيم المعلومات وإنشاء جداول دراسية فعالة`);
             }
@@ -1476,7 +1476,7 @@ function generateFallbackJobAnalysis(jobTitle, responsibilities, industry, lang 
             upskillingPlan.push('طبق ما تتعلمه مباشرة على مهامك اليومية');
         }
         
-        return {
+    return {
             transformations: transformations.slice(0, 5),
             transferableSkills: transferableSkills.slice(0, 6),
             newSkills: {
@@ -1642,10 +1642,10 @@ function generateFallbackJobAnalysis(jobTitle, responsibilities, industry, lang 
             upskillingPlan.push('Look for opportunities to apply what you learn in your current role');
         }
         
-        return {
+    return {
             transformations: transformations.slice(0, 5),
             transferableSkills: transferableSkills.slice(0, 6),
-            newSkills: {
+        newSkills: {
                 technical: technicalSkills,
                 soft: softSkills
             },
@@ -1956,6 +1956,7 @@ app.post('/api/send-results-email', async (req, res) => {
         // Priority 1: Use Resend API (works on Railway, no SMTP blocking)
         if (process.env.RESEND_API_KEY) {
             console.log('Using Resend API for email sending');
+            console.log('From email:', fromEmail);
             
             try {
                 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -1968,6 +1969,30 @@ app.post('/api/send-results-email', async (req, res) => {
                 });
                 
                 if (resendError) {
+                    // Check if it's a domain verification error
+                    if (resendError.message && resendError.message.includes('not verified')) {
+                        // Try fallback to Resend test domain
+                        console.log('Domain not verified, trying Resend test domain...');
+                        const testFromEmail = 'onboarding@resend.dev';
+                        
+                        const { data: testData, error: testError } = await resend.emails.send({
+                            from: testFromEmail,
+                            to: email,
+                            subject: subject,
+                            html: htmlContent
+                        });
+                        
+                        if (testError) {
+                            throw new Error(`Domain verification error: ${resendError.message}. Also failed with test domain: ${testError.message}`);
+                        }
+                        
+                        console.log('Email sent successfully via Resend (test domain). Message ID:', testData?.id);
+                        return res.json({
+                            success: true,
+                            message: 'Email sent successfully',
+                            messageId: testData?.id
+                        });
+                    }
                     throw new Error(resendError.message || 'Resend API error');
                 }
                 
@@ -2113,6 +2138,10 @@ app.post('/api/send-results-email', async (req, res) => {
             userMessage = req.body.language === 'ar'
                 ? 'تم رفض الاتصال. يرجى التحقق من عنوان SMTP والمنفذ.'
                 : 'Connection refused. Please check your SMTP host and port.';
+        } else if (error.message && error.message.includes('not verified')) {
+            userMessage = req.body.language === 'ar'
+                ? 'النطاق غير مُتحقق منه في Resend. يرجى إضافة والتحقق من النطاق على https://resend.com/domains أو استخدم onboarding@resend.dev للاختبار.'
+                : 'Domain not verified in Resend. Please add and verify your domain at https://resend.com/domains or use onboarding@resend.dev for testing.';
         } else {
             userMessage = req.body.language === 'ar' 
                 ? 'فشل إرسال البريد الإلكتروني. يرجى المحاولة مرة أخرى.' 
