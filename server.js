@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 const app = express();
@@ -13,6 +14,50 @@ app.use(express.static(__dirname));
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || 'your-api-key-here');
 
 const PORT = process.env.PORT || 3000;
+
+// Helper function to extract and parse JSON from AI response
+function extractJSON(text) {
+    if (!text || typeof text !== 'string') {
+        return null;
+    }
+    
+    // Remove markdown code blocks
+    text = text.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim();
+    
+    // Try to find JSON object in the text
+    // Look for { ... } pattern
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+        try {
+            return JSON.parse(jsonMatch[0]);
+        } catch (e) {
+            // If that fails, try cleaning it more
+        }
+    }
+    
+    // Try parsing the whole text
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        // If that fails, try to extract just the JSON part
+        // Remove any text before first { and after last }
+        const firstBrace = text.indexOf('{');
+        const lastBrace = text.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            try {
+                return JSON.parse(text.substring(firstBrace, lastBrace + 1));
+            } catch (e2) {
+                // Still failed, log for debugging
+                console.error('Failed to parse JSON. First 500 chars:', text.substring(0, 500));
+                console.error('Parse error:', e2.message);
+                return null;
+            }
+        }
+        console.error('Failed to parse JSON. First 500 chars:', text.substring(0, 500));
+        console.error('Parse error:', e.message);
+        return null;
+    }
+}
 
 // Tool 1: AI Skills Gap Analyzer
 app.post('/api/analyze-skills-gap', async (req, res) => {
@@ -100,20 +145,19 @@ Format as JSON:
             const response = await result.response;
             let text = response.text();
             
-            // Clean up the response - remove markdown code blocks if present
-            text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            // Extract JSON from response
+            analysis = extractJSON(text);
             
-            try {
-                analysis = JSON.parse(text);
+            if (analysis && analysis.priorityGaps && analysis.roadmap && analysis.insights) {
                 console.log('AI Analysis received:', {
                     hasGaps: !!analysis.priorityGaps,
                     hasRoadmap: !!analysis.roadmap,
                     hasInsights: !!analysis.insights,
                     insightsLength: analysis.insights ? analysis.insights.length : 0
                 });
-            } catch (parseError) {
-                console.error('JSON parse error:', parseError);
-                console.log('Using fallback analysis');
+            } else {
+                console.error('AI response invalid or incomplete, using fallback');
+                console.log('Response preview:', text.substring(0, 500));
                 analysis = generateFallbackAnalysis(answers, readinessScore, lang);
             }
         } catch (aiError) {
@@ -284,15 +328,13 @@ Format as JSON:
         const response = await result.response;
         let text = response.text();
         
-        // Clean up the response - remove markdown code blocks if present
-        text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        // Extract JSON from response
+        let learningPath = extractJSON(text);
         
-        let learningPath;
-        try {
-            learningPath = JSON.parse(text);
-        } catch (parseError) {
-            console.error('JSON parse error:', parseError);
-            learningPath = generateFallbackLearningPath(role, experience, goals, timePerWeek);
+        if (!learningPath || !learningPath.curriculum || !learningPath.timeline) {
+            console.error('AI response invalid or incomplete, using fallback');
+            console.log('Response preview:', text.substring(0, 500));
+            learningPath = generateFallbackLearningPath(role, experience, goals, timePerWeek, lang);
         }
         
         if (!learningPath.curriculum || !learningPath.timeline) {
@@ -404,21 +446,16 @@ Format as JSON:
             console.log('Response length:', text.length);
             console.log('First 200 chars:', text.substring(0, 200));
             
-            // Clean up the response - remove markdown code blocks if present
-            text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            // Extract JSON from response
+            analysis = extractJSON(text);
             
-            try {
-                analysis = JSON.parse(text);
+            if (analysis && analysis.transformations && Array.isArray(analysis.transformations)) {
                 console.log('=== AI RESPONSE PARSED SUCCESSFULLY ===');
                 console.log('Has transformations:', !!analysis.transformations);
                 console.log('Has careerOptions:', !!analysis.careerOptions);
                 console.log('First transformation:', analysis.transformations?.[0]?.substring(0, 100));
                 
-                // VERY MINIMAL validation - only check if arrays exist, don't validate content
-                if (!analysis.transformations || !Array.isArray(analysis.transformations)) {
-                    console.log('WARNING: Missing transformations array, creating empty one');
-                    analysis.transformations = [];
-                }
+                // Ensure all required fields exist
                 if (!analysis.careerOptions || !Array.isArray(analysis.careerOptions)) {
                     console.log('WARNING: Missing careerOptions array, creating empty one');
                     analysis.careerOptions = [];
@@ -442,11 +479,9 @@ Format as JSON:
                 
                 // ALWAYS use AI response - don't fall back unless it's completely broken
                 console.log('=== USING AI-GENERATED CONTENT ===');
-                
-            } catch (parseError) {
-                console.error('=== JSON PARSE ERROR ===');
-                console.error('Error:', parseError.message);
-                console.error('Text that failed to parse:', text.substring(0, 500));
+            } else {
+                console.error('=== AI RESPONSE INVALID OR INCOMPLETE ===');
+                console.error('Response preview:', text.substring(0, 500));
                 console.log('Falling back to hardcoded function');
                 analysis = generateFallbackJobAnalysis(jobTitle, responsibilities, industry, lang);
             }
@@ -1590,9 +1625,360 @@ function generateFallbackJobAnalysis(jobTitle, responsibilities, industry, lang 
     }
 }
 
+// Email configuration
+const createEmailTransporter = () => {
+    // Option 1: Custom SMTP (recommended - use your own email server)
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+        return nodemailer.createTransport({
+            host: process.env.SMTP_HOST,
+            port: parseInt(process.env.SMTP_PORT) || 587,
+            secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS
+            },
+            // Additional options for better compatibility
+            tls: {
+                rejectUnauthorized: process.env.SMTP_REJECT_UNAUTHORIZED !== 'false'
+            }
+        });
+    }
+    
+    // Option 2: Gmail with app password (for personal/testing use)
+    if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+        return nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: process.env.GMAIL_USER,
+                pass: process.env.GMAIL_APP_PASSWORD
+            }
+        });
+    }
+    
+    // If no email config, return null (will use a test account)
+    return null;
+};
+
+// Format email content based on tool type
+function formatEmailContent(toolName, results, language) {
+    const isArabic = language === 'ar';
+    const lang = {
+        ar: {
+            greeting: 'مرحباً',
+            skillsGapTitle: 'نتائج تحليل فجوات المهارات',
+            learningPathTitle: 'مسار التعلم المخصص',
+            jobTranslatorTitle: 'تحليل التحول المهني',
+            score: 'النتيجة',
+            gaps: 'الفجوات ذات الأولوية',
+            roadmap: 'خارطة طريق العمل',
+            insights: 'الرؤى الاستراتيجية',
+            timeline: 'الجدول الزمني',
+            milestones: 'المعالم الرئيسية',
+            careerPaths: 'المسارات المهنية',
+            curriculum: 'المنهج المخصص',
+            transformations: 'التحولات',
+            transferableSkills: 'المهارات القابلة للتحويل',
+            newSkills: 'المهارات الجديدة المطلوبة',
+            careerOptions: 'خيارات الانتقال المهني',
+            upskillingPlan: 'خطة التطوير الفوري',
+            opportunityAnalysis: 'تحليل الفرص',
+            footer: 'شكراً لاستخدام منصة أدوات الذكاء الاصطناعي'
+        },
+        en: {
+            greeting: 'Hello',
+            skillsGapTitle: 'AI Skills Gap Analysis Results',
+            learningPathTitle: 'Personalized Learning Path',
+            jobTranslatorTitle: 'Career Transformation Analysis',
+            score: 'Score',
+            gaps: 'Priority Gaps',
+            roadmap: 'Action Roadmap',
+            insights: 'Strategic Insights',
+            timeline: 'Timeline',
+            milestones: 'Key Milestones',
+            careerPaths: 'Career Paths',
+            curriculum: 'Custom Curriculum',
+            transformations: 'Transformations',
+            transferableSkills: 'Transferable Skills',
+            newSkills: 'New Skills Required',
+            careerOptions: 'Career Transition Options',
+            upskillingPlan: 'Immediate Upskilling Plan',
+            opportunityAnalysis: 'Opportunity Analysis',
+            footer: 'Thank you for using the AI Association Tools Platform'
+        }
+    };
+    
+    const t = lang[isArabic ? 'ar' : 'en'];
+    let html = `
+        <!DOCTYPE html>
+        <html dir="${isArabic ? 'rtl' : 'ltr'}" lang="${language}">
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+                h1 { color: #1E3A8A; border-bottom: 3px solid #22A599; padding-bottom: 10px; }
+                h2 { color: #1E3A8A; margin-top: 30px; }
+                .score { font-size: 24px; font-weight: bold; color: #22A599; }
+                ul { margin: 10px 0; padding-${isArabic ? 'right' : 'left'}: 20px; }
+                li { margin: 8px 0; }
+                .section { margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 5px; }
+                .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; text-align: center; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>${t.greeting}</h1>
+                <h1>${toolName}</h1>
+    `;
+    
+    if (results.readinessScore !== undefined) {
+        // Skills Gap Analyzer
+        html += `<div class="section"><h2>${t.score}</h2><div class="score">${results.readinessScore}/100</div></div>`;
+        if (results.priorityGaps && results.priorityGaps.length > 0) {
+            html += `<div class="section"><h2>${t.gaps}</h2><ul>`;
+            results.priorityGaps.forEach(gap => {
+                html += `<li>${escapeHtml(gap)}</li>`;
+            });
+            html += `</ul></div>`;
+        }
+        if (results.roadmap && results.roadmap.length > 0) {
+            html += `<div class="section"><h2>${t.roadmap}</h2><ul>`;
+            results.roadmap.forEach(step => {
+                html += `<li>${escapeHtml(step)}</li>`;
+            });
+            html += `</ul></div>`;
+        }
+        if (results.insights) {
+            html += `<div class="section"><h2>${t.insights}</h2><p>${escapeHtml(results.insights)}</p></div>`;
+        }
+    } else if (results.timeline || results.milestones || results.careerPaths) {
+        // Learning Path Generator
+        if (results.timeline) {
+            html += `<div class="section"><h2>${t.timeline}</h2>`;
+            if (Array.isArray(results.timeline)) {
+                results.timeline.forEach(phase => {
+                    html += `<h3>${escapeHtml(phase.phase || phase.week || '')}</h3>`;
+                    if (phase.topics) html += `<p><strong>Topics:</strong> ${escapeHtml(phase.topics)}</p>`;
+                    if (phase.focus) html += `<p><strong>Focus:</strong> ${escapeHtml(phase.focus)}</p>`;
+                    if (phase.duration) html += `<p><strong>Duration:</strong> ${escapeHtml(phase.duration)}</p>`;
+                    if (phase.activities) html += `<p><strong>Activities:</strong> ${escapeHtml(phase.activities)}</p>`;
+                    if (phase.projects) html += `<p><strong>Projects:</strong> ${escapeHtml(phase.projects)}</p>`;
+                });
+            } else {
+                html += `<p>${escapeHtml(JSON.stringify(results.timeline))}</p>`;
+            }
+            html += `</div>`;
+        }
+        if (results.milestones && Array.isArray(results.milestones)) {
+            html += `<div class="section"><h2>${t.milestones}</h2><ul>`;
+            results.milestones.forEach(milestone => {
+                html += `<li><strong>${escapeHtml(milestone.title || milestone.milestone || '')}</strong>`;
+                if (milestone.description) html += `: ${escapeHtml(milestone.description)}`;
+                html += `</li>`;
+            });
+            html += `</ul></div>`;
+        }
+        if (results.careerPaths && Array.isArray(results.careerPaths)) {
+            html += `<div class="section"><h2>${t.careerPaths}</h2>`;
+            results.careerPaths.forEach(path => {
+                html += `<h3>${escapeHtml(path.title || path.path || '')}</h3>`;
+                if (path.description) html += `<p>${escapeHtml(path.description)}</p>`;
+                if (path.skills) html += `<p><strong>Skills:</strong> ${escapeHtml(path.skills)}</p>`;
+                if (path.steps && Array.isArray(path.steps)) {
+                    html += `<ul>`;
+                    path.steps.forEach(step => html += `<li>${escapeHtml(step)}</li>`);
+                    html += `</ul>`;
+                }
+            });
+            html += `</div>`;
+        }
+        if (results.curriculum) {
+            html += `<div class="section"><h2>${t.curriculum}</h2>`;
+            if (typeof results.curriculum === 'object' && results.curriculum.free) {
+                html += `<h3>${isArabic ? 'الموارد المجانية' : 'Free Resources'}</h3>`;
+                if (Array.isArray(results.curriculum.free)) {
+                    html += `<ul>`;
+                    results.curriculum.free.forEach(resource => {
+                        html += `<li>${escapeHtml(resource)}</li>`;
+                    });
+                    html += `</ul>`;
+                }
+                html += `<h3>${isArabic ? 'الموارد المدفوعة' : 'Paid Resources'}</h3>`;
+                if (Array.isArray(results.curriculum.paid)) {
+                    html += `<ul>`;
+                    results.curriculum.paid.forEach(resource => {
+                        html += `<li>${escapeHtml(resource)}</li>`;
+                    });
+                    html += `</ul>`;
+                }
+            } else {
+                html += `<p>${escapeHtml(JSON.stringify(results.curriculum))}</p>`;
+            }
+            html += `</div>`;
+        }
+    } else if (results.transformations || results.transferableSkills) {
+        // Job Skills Translator
+        if (results.transformations && Array.isArray(results.transformations)) {
+            html += `<div class="section"><h2>${t.transformations}</h2><ul>`;
+            results.transformations.forEach(trans => {
+                html += `<li>${escapeHtml(trans)}</li>`;
+            });
+            html += `</ul></div>`;
+        }
+        if (results.transferableSkills && Array.isArray(results.transferableSkills)) {
+            html += `<div class="section"><h2>${t.transferableSkills}</h2><ul>`;
+            results.transferableSkills.forEach(skill => {
+                html += `<li>${escapeHtml(skill)}</li>`;
+            });
+            html += `</ul></div>`;
+        }
+        if (results.newSkills && Array.isArray(results.newSkills)) {
+            html += `<div class="section"><h2>${t.newSkills}</h2><ul>`;
+            results.newSkills.forEach(skill => {
+                html += `<li>${escapeHtml(skill)}</li>`;
+            });
+            html += `</ul></div>`;
+        }
+        if (results.careerOptions && Array.isArray(results.careerOptions)) {
+            html += `<div class="section"><h2>${t.careerOptions}</h2><ul>`;
+            results.careerOptions.forEach(option => {
+                html += `<li>${escapeHtml(option)}</li>`;
+            });
+            html += `</ul></div>`;
+        }
+        if (results.upskillingPlan && Array.isArray(results.upskillingPlan)) {
+            html += `<div class="section"><h2>${t.upskillingPlan}</h2><ul>`;
+            results.upskillingPlan.forEach(step => {
+                html += `<li>${escapeHtml(step)}</li>`;
+            });
+            html += `</ul></div>`;
+        }
+        if (results.opportunityAnalysis) {
+            html += `<div class="section"><h2>${t.opportunityAnalysis}</h2><p>${escapeHtml(results.opportunityAnalysis)}</p></div>`;
+        }
+    }
+    
+    html += `
+                <div class="footer">
+                    <p>${t.footer}</p>
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+    
+    return html;
+}
+
+function escapeHtml(text) {
+    if (typeof text !== 'string') {
+        text = String(text);
+    }
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
+}
+
+// Email sending endpoint
+app.post('/api/send-results-email', async (req, res) => {
+    try {
+        const { email, toolName, results, language } = req.body;
+        
+        // Validate input
+        if (!email || !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid email address',
+                userMessage: language === 'ar' ? 'عنوان البريد الإلكتروني غير صحيح' : 'Invalid email address'
+            });
+        }
+        
+        if (!toolName || !results) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing required fields',
+                userMessage: language === 'ar' ? 'بيانات غير كاملة' : 'Missing required fields'
+            });
+        }
+        
+        // Create email transporter
+        let transporter = createEmailTransporter();
+        
+        // If no email config, use a test account (for development)
+        if (!transporter) {
+            // Create a test account (only works in development)
+            const testAccount = await nodemailer.createTestAccount();
+            transporter = nodemailer.createTransport({
+                host: 'smtp.ethereal.email',
+                port: 587,
+                secure: false,
+                auth: {
+                    user: testAccount.user,
+                    pass: testAccount.pass
+                }
+            });
+            console.log('Using Ethereal test account for email. Check: https://ethereal.email');
+        }
+        
+        // Format email content
+        const htmlContent = formatEmailContent(toolName, results, language || 'en');
+        
+        // Determine "from" email address based on configured service
+        let fromEmail = process.env.EMAIL_FROM || process.env.SMTP_USER || process.env.GMAIL_USER || 'noreply@ai-association.com';
+        
+        // Email options
+        const mailOptions = {
+            from: fromEmail,
+            to: email,
+            subject: `${toolName} - ${language === 'ar' ? 'نتائج التحليل' : 'Analysis Results'}`,
+            html: htmlContent
+        };
+        
+        // Send email
+        const info = await transporter.sendMail(mailOptions);
+        
+        // If using test account (Ethereal), log the preview URL
+        const hasEmailConfig = process.env.SMTP_USER || process.env.GMAIL_USER;
+        if (!hasEmailConfig) {
+            console.log('Preview URL: %s', nodemailer.getTestMessageUrl(info));
+        }
+        
+        res.json({
+            success: true,
+            message: 'Email sent successfully',
+            messageId: info.messageId
+        });
+        
+    } catch (error) {
+        console.error('Error sending email:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to send email',
+            userMessage: req.body.language === 'ar' 
+                ? 'فشل إرسال البريد الإلكتروني. يرجى المحاولة مرة أخرى.' 
+                : 'Failed to send email. Please try again.'
+        });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`AI Association Platform API server running on port ${PORT}`);
     console.log(`Using Google Gemini AI`);
     console.log(`Make sure to set GEMINI_API_KEY in your .env file`);
+    
+    // Check email configuration
+    const hasEmailConfig = process.env.SMTP_USER || process.env.GMAIL_USER;
+    if (!hasEmailConfig) {
+        console.log(`Email: Using test account (Ethereal). For production, configure:`);
+        console.log(`  - SMTP_HOST + SMTP_USER + SMTP_PASS + EMAIL_FROM (recommended)`);
+        console.log(`  - GMAIL_USER + GMAIL_APP_PASSWORD + EMAIL_FROM (for testing)`);
+    } else {
+        console.log(`Email: Configuration detected`);
+    }
 });
 
