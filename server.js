@@ -1720,7 +1720,10 @@ function formatEmailContent(toolName, results, language) {
             careerOptions: 'خيارات الانتقال المهني',
             upskillingPlan: 'خطة التطوير الفوري',
             opportunityAnalysis: 'تحليل الفرص',
-            footer: 'شكراً لاستخدام منصة أدوات الذكاء الاصطناعي'
+            footer: 'شكراً لاستخدام منصة أدوات الذكاء الاصطناعي',
+            welcomeMessage: 'نرحب بك للانضمام إلى جمعية الذكاء الاصطناعي! نحن ملتزمون بتعزيز اعتماد الذكاء الاصطناعي في جميع أنحاء المملكة العربية السعودية من خلال التعليم والتعاون والابتكار.',
+            joinUs: 'انضم إلينا',
+            registerLink: 'https://aia.org.sa'
         },
         en: {
             greeting: 'Hello',
@@ -1741,7 +1744,10 @@ function formatEmailContent(toolName, results, language) {
             careerOptions: 'Career Transition Options',
             upskillingPlan: 'Immediate Upskilling Plan',
             opportunityAnalysis: 'Opportunity Analysis',
-            footer: 'Thank you for using the AI Association Tools Platform'
+            footer: 'Thank you for using the AI Association Tools Platform',
+            welcomeMessage: 'We welcome you to join the Artificial Intelligence Association! We are committed to advancing AI adoption across Saudi Arabia through education, collaboration, and innovation.',
+            joinUs: 'Join Us',
+            registerLink: 'https://aia.org.sa'
         }
     };
     
@@ -1896,7 +1902,19 @@ function formatEmailContent(toolName, results, language) {
         }
     }
     
+    // Add welcome message and registration link
     html += `
+                <div class="section" style="background: #1E3A8A; color: white; padding: 25px; border-radius: 8px; margin-top: 30px;">
+                    <h2 style="color: white; margin-top: 0;">${t.welcomeMessage}</h2>
+                    <p style="font-size: 16px; line-height: 1.8;">
+                        ${isArabic 
+                            ? 'انضم إلى مجتمعنا وكن جزءاً من رحلة تطوير الذكاء الاصطناعي في المملكة. سجل الآن للاستفادة من برامجنا المتخصصة وورش العمل والفعاليات.'
+                            : 'Join our community and be part of the AI development journey in Saudi Arabia. Register now to benefit from our specialized programs, workshops, and events.'}
+                    </p>
+                    <a href="${t.registerLink}" style="display: inline-block; background: #22A599; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; margin-top: 15px;">
+                        ${t.joinUs} - ${t.registerLink}
+                    </a>
+                </div>
                 <div class="footer">
                     <p>${t.footer}</p>
                 </div>
